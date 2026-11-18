@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark palette: same roles as windows/ui/style.css under prefers-color-scheme: dark. -->
+<resources>
+    <color name="brand_blue">#2B49C8</color>
+    <color name="ink">#F2F3F6</color>
+    <color name="muted">#A2A8B4</color>
+    <color name="line">#2A2E36</color>
+    <color name="shade">#16181D</color>
+    <color name="paper">#0E1013</color>
+    <color name="ripple_primary">#33FFFFFF</color>
+    <color name="ripple_secondary">#33A8BCFF</color>
+</resources>

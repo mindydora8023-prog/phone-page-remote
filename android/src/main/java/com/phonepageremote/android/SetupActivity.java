@@ -10,12 +10,7 @@ import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.graphics.Insets;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -36,15 +31,20 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * One screen: masthead, receiver, accessibility, pairing key.
+ *
+ * The screen only decides state and wiring; every view comes from {@link Design}.
+ * It is built in code because the Android half is compiled with aapt2 only (no
+ * Gradle, so no AppCompat/Material), and it is styled from the same tokens the
+ * Windows page uses so both ends read as one product.
+ */
 public final class SetupActivity extends Activity {
-    private static final int BLUE = 0xff002fa7;
-    private static final int INK = 0xff182135;
-    private static final int MUTED = 0xff495269;
-    private static final int LINE = 0xffdadee7;
     private final Runnable observer = this::refresh;
     private SecretStore store;
-    private LinearLayout content;
+    private Design ui;
     private TextView receiverStatus;
+    private TextView receiverMessage;
     private TextView gestureStatus;
     private TextView keyView;
     private Button receiverButton;
@@ -57,6 +57,7 @@ public final class SetupActivity extends Activity {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         store = new SecretStore(this);
+        ui = new Design(this);
         makeContent();
     }
 
@@ -76,7 +77,7 @@ public final class SetupActivity extends Activity {
 
     private void makeContent() {
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Color.WHITE);
+        scroll.setBackgroundColor(ui.color(R.color.paper));
         scroll.setFillViewport(true);
         if (Build.VERSION.SDK_INT >= 35) {
             getWindow().setDecorFitsSystemWindows(false);
@@ -86,102 +87,63 @@ public final class SetupActivity extends Activity {
                 return WindowInsets.CONSUMED;
             });
         }
-        content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24), dp(24), dp(24), dp(24));
+
+        LinearLayout content = ui.stack();
         scroll.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         setContentView(scroll);
 
-        TextView heading = text(30, INK, true, 0);
-        heading.setText(R.string.app_name);
-        if (Build.VERSION.SDK_INT >= 28) {
-            heading.setAccessibilityHeading(true);
-        }
-        text(15, MUTED, false, 6).setText(R.string.intro);
+        content.addView(ui.brandRule(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(R.dimen.brand_rule)));
 
-        section(R.string.receiver_title);
-        receiverStatus = text(15, INK, false, 6);
+        LinearLayout body = ui.column(getResources().getDisplayMetrics().widthPixels);
+        content.addView(body);
+
+        LinearLayout masthead = ui.row();
+        masthead.setGravity(Gravity.TOP);
+        masthead.addView(ui.display(R.string.app_name),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        receiverStatus = ui.statusChip();
         receiverStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        receiverButton = button(R.string.start_receiver, true, v -> receiverAction());
-        settingsButton = button(R.string.open_app_settings, false, v -> openSettings());
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        statusParams.leftMargin = ui.dp(R.dimen.gap_m);
+        statusParams.topMargin = ui.dp(R.dimen.gap_s);
+        masthead.addView(receiverStatus, statusParams);
+        ui.add(body, masthead, 0);
 
-        section(R.string.accessibility_title);
-        gestureStatus = text(15, MUTED, false, 6);
-        button(R.string.accessibility_settings, false,
+        ui.add(body, ui.caption(R.string.intro), R.dimen.gap_s);
+
+        ui.section(body, R.string.receiver_title);
+        receiverMessage = ui.add(body, ui.bodyText(R.string.stopped), 0);
+        receiverButton = ui.add(body, ui.primary(R.string.start_receiver, v -> receiverAction()),
+                R.dimen.gap_m);
+        LinearLayout receiverActions = ui.row();
+        receiverActions.setGravity(Gravity.END);
+        settingsButton = ui.addChip(receiverActions, R.string.open_app_settings, v -> openSettings());
+        ui.add(body, receiverActions, 0);
+
+        ui.section(body, R.string.accessibility_title);
+        gestureStatus = ui.add(body, ui.bodyText(R.string.accessibility_off), 0);
+        LinearLayout gestureActions = ui.row();
+        gestureActions.setGravity(Gravity.END);
+        ui.addChip(gestureActions, R.string.accessibility_settings,
                 v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        ui.add(body, gestureActions, R.dimen.gap_s);
 
-        section(R.string.secret_title);
-        text(15, MUTED, false, 6).setText(R.string.secret_help);
-        keyView = text(14, BLUE, true, 10);
-        keyView.setPadding(dp(12), dp(10), dp(12), dp(10));
-        keyView.setBackground(shape(0xfff7f7f8, LINE));
-        keyView.setFontFeatureSettings("tnum");
-        copyButton = button(R.string.copy_secret, false, v -> copySecret());
-        button(R.string.rotate_secret, false, v -> new AlertDialog.Builder(this)
+        ui.section(body, R.string.secret_title);
+        ui.add(body, ui.caption(R.string.secret_help), 0);
+        keyView = ui.add(body, ui.keyCard(), R.dimen.gap_m);
+        LinearLayout keyActions = ui.row();
+        keyActions.setGravity(Gravity.END);
+        copyButton = ui.addChip(keyActions, R.string.copy_secret, v -> copySecret());
+        ui.addChip(keyActions, R.string.rotate_secret, v -> new AlertDialog.Builder(this)
                 .setTitle(R.string.rotate_secret)
                 .setMessage(R.string.rotate_confirm)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.rotate_secret, (dialog, which) -> rotateSecret())
                 .show());
-    }
-
-    private void section(int name) {
-        View rule = new View(this);
-        rule.setBackgroundColor(LINE);
-        LinearLayout.LayoutParams ruleParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
-        ruleParams.topMargin = dp(22);
-        content.addView(rule, ruleParams);
-        TextView title = text(19, INK, true, 12);
-        title.setText(name);
-        if (Build.VERSION.SDK_INT >= 28) {
-            title.setAccessibilityHeading(true);
-        }
-    }
-
-    private TextView text(int size, int color, boolean bold, int top) {
-        TextView view = new TextView(this);
-        view.setTextSize(size);
-        view.setTextColor(color);
-        view.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
-        add(view, top);
-        return view;
-    }
-
-    private Button button(int label, boolean primary, View.OnClickListener click) {
-        Button view = new Button(this);
-        view.setText(label);
-        view.setTextSize(15);
-        view.setTextColor(primary ? Color.WHITE : BLUE);
-        view.setAllCaps(false);
-        view.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        view.setPadding(dp(14), dp(8), dp(14), dp(8));
-        view.setMinHeight(dp(48));
-        view.setStateListAnimator(null);
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(primary ? 0x33ffffff : 0x20002fa7),
-                shape(primary ? BLUE : Color.WHITE, primary ? BLUE : LINE), null));
-        view.setOnClickListener(click);
-        add(view, 8);
-        return view;
-    }
-
-    private void add(View view, int top) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.topMargin = dp(top);
-        content.addView(view, params);
-    }
-
-    private GradientDrawable shape(int fill, int stroke) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(fill);
-        drawable.setStroke(dp(1), stroke);
-        return drawable;
-    }
-
-    private int dp(int size) {
-        return Math.round(size * getResources().getDisplayMetrics().density);
+        ui.add(body, keyActions, R.dimen.gap_m);
     }
 
     private BluetoothAdapter adapter() {
@@ -207,6 +169,13 @@ public final class SetupActivity extends Activity {
         }
     }
 
+    /** Reflect one receiver state in the chip plus the explanation line. */
+    private void setReceiverState(int state, String message) {
+        receiverStatus.setText(state);
+        ui.markStatus(receiverStatus, state != R.string.stopped);
+        receiverMessage.setText(message);
+    }
+
     private void refresh() {
         gestureStatus.setText(PageGestureService.isConnected()
                 ? R.string.accessibility_on : R.string.accessibility_off);
@@ -214,31 +183,46 @@ public final class SetupActivity extends Activity {
         receiverButton.setEnabled(true);
         receiverButton.setAlpha(1f);
         if (ReceiverService.active()) {
-            receiverStatus.setText(ReceiverService.statusText(this));
+            setReceiverState(R.string.state_running, ReceiverService.statusText(this));
             receiverButton.setText(R.string.stop_receiver);
-        } else if (!missingPermissions().isEmpty()) {
-            receiverStatus.setText(R.string.permissions_missing);
+            return;
+        }
+        if (!missingPermissions().isEmpty()) {
+            setReceiverState(R.string.state_permission, getString(R.string.permissions_missing));
             receiverButton.setText(R.string.permit);
             settingsButton.setText(R.string.open_app_settings);
             settingsButton.setVisibility(View.VISIBLE);
-        } else if (!ReceiverService.notificationsReady(this)) {
-            receiverStatus.setText(R.string.notifications_disabled);
-            receiverButton.setText(R.string.open_notification_settings);
-        } else {
-            BluetoothAdapter adapter = adapter();
-            if (adapter == null) {
-                receiverStatus.setText(R.string.unsupported);
-                receiverButton.setText(R.string.start_receiver);
-                receiverButton.setEnabled(false);
-                receiverButton.setAlpha(0.5f);
-            } else if (!adapter.isEnabled()) {
-                receiverStatus.setText(R.string.bluetooth_off);
-                receiverButton.setText(R.string.enable_bluetooth);
-            } else {
-                receiverStatus.setText(ReceiverService.statusText(this));
-                receiverButton.setText(R.string.start_receiver);
-            }
+            return;
         }
+        if (!ReceiverService.notificationsReady(this)) {
+            setReceiverState(R.string.state_permission, getString(R.string.notifications_disabled));
+            receiverButton.setText(R.string.open_notification_settings);
+            return;
+        }
+        BluetoothAdapter adapter = adapter();
+        if (adapter == null) {
+            setReceiverState(R.string.stopped, getString(R.string.unsupported));
+            receiverButton.setText(R.string.start_receiver);
+            receiverButton.setEnabled(false);
+            receiverButton.setAlpha(0.5f);
+            return;
+        }
+        if (!adapter.isEnabled()) {
+            setReceiverState(R.string.stopped, getString(R.string.bluetooth_off));
+            receiverButton.setText(R.string.enable_bluetooth);
+            return;
+        }
+        // Idle as far as the UI can tell: the service itself may still be starting or
+        // have failed with a Bluetooth error, and that belongs in the chip too.
+        int reported = ReceiverService.statusResource();
+        int state = R.string.stopped;
+        if (reported == R.string.starting) {
+            state = R.string.state_starting;
+        } else if (reported == R.string.bluetooth_error) {
+            state = R.string.state_failed;
+        }
+        setReceiverState(state, ReceiverService.statusText(this));
+        receiverButton.setText(R.string.start_receiver);
     }
 
     private void receiverAction() {
@@ -264,7 +248,7 @@ public final class SetupActivity extends Activity {
                     startForegroundService(new Intent(this, ReceiverService.class));
                 }
             } catch (IllegalStateException | SecurityException e) {
-                receiverStatus.setText(R.string.start_error);
+                setReceiverState(R.string.state_failed, getString(R.string.start_error));
             }
         }
     }

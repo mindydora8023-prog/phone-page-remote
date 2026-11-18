@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same tokens as windows/ui/style.css, so both ends read as one product. -->
+<resources>
+    <color name="brand_blue">#002FA7</color>
+    <color name="ink">#15171B</color>
+    <color name="muted">#555A65</color>
+    <color name="line">#D2D5DB</color>
+    <color name="shade">#F7F7F8</color>
+    <color name="paper">#FFFFFF</color>
+    <color name="ripple_primary">#33FFFFFF</color>
+    <color name="ripple_secondary">#20002FA7</color>
+</resources>

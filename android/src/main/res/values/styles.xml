@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+    <!-- Light defaults. values-night/styles.xml re-points AppTheme at this base and
+         flips the system bar icons, so the two files never duplicate the layout. -->
+    <style name="AppTheme.Base" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:windowBackground">#FFFFFF</item>
-        <item name="android:colorAccent">#002FA7</item>
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:colorAccent">@color/brand_blue</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:statusBarColor">#FFFFFF</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:statusBarColor">@color/paper</item>
+        <item name="android:navigationBarColor">@color/paper</item>
     </style>
+    <style name="AppTheme" parent="AppTheme.Base" />
 </resources>

@@ -4,6 +4,10 @@
     <string name="intro">用 Windows 通过蓝牙在手机上滑动翻页。</string>
     <string name="receiver_title">蓝牙接收</string>
     <string name="stopped">已停止</string>
+    <string name="state_running">接收中</string>
+    <string name="state_permission">待授权</string>
+    <string name="state_starting">启动中</string>
+    <string name="state_failed">启动失败</string>
     <string name="starting">正在启动蓝牙接收…</string>
     <string name="listening">正在广播，可从 Windows 连接</string>
     <string name="connected">蓝牙设备已连接，等待翻页指令</string>

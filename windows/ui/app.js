@@ -65,6 +65,9 @@ function render(next) {
   const connected = Boolean(state.device);
   const waiting = state.phones.length > 0 && !connected && state.phase !== "scanning";
   $("connection").dataset.connected = connected;
+  $("connection").dataset.busy = busy;
+  $("connection").dataset.phase = state.phase || "";
+  document.body.dataset.busy = busy;
   $("connection").textContent = phases[state.phase] || (connected ? "\u5df2\u8fde\u63a5" : "\u672a\u8fde\u63a5");
   $("scan").disabled = busy || connected;
   $("scan").textContent = state.phase === "scanning" ? "\u626b\u63cf\u4e2d\u2026" : (state.phones.length ? "\u91cd\u65b0\u626b\u63cf" : "\u626b\u63cf\u624b\u673a");

@@ -79,6 +79,11 @@ public final class ReceiverService extends Service {
                 ? context.getString(status, statusCode) : context.getString(status);
     }
 
+    /** The resource of the last reported state, so the setup screen can show it as a chip. */
+    static int statusResource() {
+        return status;
+    }
+
     static void updateSecret(byte[] secret) {
         if (liveSession != null) {
             liveSession.protocol.replaceSecret(secret);
