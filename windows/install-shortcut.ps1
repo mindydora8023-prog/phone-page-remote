@@ -1,4 +1,13 @@
-param([string] $ExePath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'dist\PhonePageRemote.exe'))
+param(
+    [string] $ExePath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'dist\PhonePageRemote.exe'),
+    # Optional intermediary that starts the app on its behalf. Needed when this checkout
+    # lives under a folder carrying a Low mandatory-integrity label: Explorer refuses to
+    # shell-launch an unsigned low-integrity image (ShellExecuteEx returns 1223 /
+    # SE_ERR_ACCESSDENIED) while CreateProcess still works, so double-clicking a shortcut
+    # that points straight at the exe does nothing. A launcher outside the labelled folder
+    # starts the exe through CreateProcess and double-click works again.
+    [string] $LauncherPath = ''
+)
 
 $ErrorActionPreference = 'Stop'
 $exe = Get-Item -LiteralPath $ExePath
@@ -13,11 +22,25 @@ $title = -join [char[]] @(0x624B, 0x673A, 0x7FFB, 0x9875, 0x5668)
 $linkPath = Join-Path $desktop "$title.lnk"
 $shell = New-Object -ComObject WScript.Shell
 $link = $shell.CreateShortcut($linkPath)
-if ((Test-Path -LiteralPath $linkPath) -and $link.TargetPath -ine $exe.FullName) {
-    throw 'A desktop shortcut already uses this name and points to a different program.'
+
+$target = $exe.FullName
+if ($LauncherPath -ne '') {
+    $launcher = Get-Item -LiteralPath $LauncherPath
+    if ($launcher.PSIsContainer -or $launcher.Extension -ine '.exe') { throw 'Choose a .exe for -LauncherPath.' }
+    $target = $launcher.FullName
 }
-$link.TargetPath = $exe.FullName
-$link.WorkingDirectory = $exe.DirectoryName
+
+if ((Test-Path -LiteralPath $linkPath) -and $link.TargetPath -ne '') {
+    $existing = $link.TargetPath
+    $known = ($existing -ieq $exe.FullName) -or ($existing -ieq $target) -or
+             ((Split-Path -Leaf $existing) -ieq 'ppr-launch.exe')
+    if (-not $known) {
+        throw 'A desktop shortcut already uses this name and points to a different program.'
+    }
+}
+
+$link.TargetPath = $target
+$link.WorkingDirectory = (Split-Path -Parent $target)
 $link.IconLocation = "$($exe.FullName),0"
 $link.Description = $title
 $link.Save()

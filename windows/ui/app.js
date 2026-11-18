@@ -20,6 +20,44 @@ let renderVersion = 0;
 let phoneList = "";
 let pulseTimer;
 
+// Keycap labels used to switch size on a character-count cutoff, so "PageUp" and
+// "PageDown" landed on unrelated sizes. Both keycaps now share ONE size: the
+// largest that still fits the longer of the two labels.
+const keyCanvas = document.createElement("canvas");
+const keyContext = keyCanvas.getContext("2d");
+const keySizes = [48, 45, 42, 39, 36, 33, 30, 27, 24, 21, 18, 15];
+const keyFont = (size) => `800 ${size}px "Helvetica Neue",Arial,"Microsoft YaHei UI",sans-serif`;
+
+// Horizontal room a label has inside one card, in CSS pixels.
+function keyRoom(card) {
+  if (!card || !card.clientWidth) return 0;
+  const style = getComputedStyle(card);
+  const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+  const gap = parseFloat(style.columnGap) || 0;
+  const arrow = card.querySelector(".direction");
+  const arrowWidth = arrow ? arrow.getBoundingClientRect().width : 0;
+  return Math.max(24, card.clientWidth - padding - gap - arrowWidth - 4);
+}
+
+// Largest size from the scale whose rendered width fits `room`.
+function sizeThatFits(text, room) {
+  if (!keyContext || room <= 0) return keySizes[keySizes.length - 1];
+  for (const size of keySizes) {
+    keyContext.font = keyFont(size);
+    if (keyContext.measureText(text).width <= room) return size;
+  }
+  return keySizes[keySizes.length - 1];
+}
+
+// One size for both cards, so the two labels never look unrelated.
+function sharedKeycapSize(labels) {
+  const room = Math.min(keyRoom($("prev-send")), keyRoom($("next-send")));
+  if (room <= 0) return keySizes[0]; // not laid out yet: keep the default, fix on the next tick
+  let size = keySizes[0];
+  for (const label of labels) size = Math.min(size, sizeThatFits(label, room));
+  return size;
+}
+
 function render(next) {
   const prev = state;
   state = next;
@@ -52,11 +90,15 @@ function render(next) {
 
   $("mode").disabled = Boolean(capture || editing);
   $("mode").value = state.settings.mode;
+  const labels = ["prev", "next"].map((action) => (state.settings[action] || "").replace("Super", "Win"));
+  const keycap = sharedKeycapSize(labels);
   ["prev", "next"].forEach((action, i) => {
-    const text = state.settings[action].replace("Super", "Win");
+    const text = labels[i];
     const send = $(`${action}-send`);
-    $(`${action}-key`).textContent = text;
-    $(`${action}-key`).classList.toggle("combo", text.includes("+") || text.length > 7);
+    const kbd = $(`${action}-key`);
+    kbd.textContent = text;
+    kbd.classList.toggle("combo", text.includes("+"));
+    kbd.style.setProperty("--kbd-size", `${keycap}px`);
     const [angle, label] = direction[modeDirections[state.settings.mode][i]];
     send.style.setProperty("--angle", `${angle}deg`);
     $(`${action}-direction`).textContent = label;

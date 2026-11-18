@@ -38,8 +38,8 @@ button.primary:enabled:hover{background:white;color:var(--blue)}
 .next .key:enabled:hover,.next .key.pulse{background:var(--paper);color:var(--blue)}
 .key:focus-visible{outline-offset:-5px}
 .next .key:focus-visible{outline-color:currentColor}
-kbd{font:800 clamp(19px,5vw,48px)/1 "Helvetica Neue",Arial,"Microsoft YaHei UI",sans-serif;letter-spacing:-.055em;overflow-wrap:anywhere}
-kbd.combo{font-size:clamp(15px,2.7vw,27px);letter-spacing:-.025em}
+kbd{font:800 44px/1 "Helvetica Neue",Arial,"Microsoft YaHei UI",sans-serif;font-size:var(--kbd-size,44px);letter-spacing:-.055em;overflow-wrap:anywhere;min-width:0}
+kbd.combo{letter-spacing:-.02em}
 .direction{position:relative;width:27px;height:2px;background:currentColor;flex:0 0 27px;margin-left:2px;transform:rotate(var(--angle,0deg))}
 .direction::after{position:absolute;right:1px;top:-5px;width:10px;height:10px;content:"";border:solid currentColor;border-width:2px 2px 0 0;transform:rotate(45deg)}
 .action-footer{display:flex;min-height:67px;align-items:center;justify-content:space-between;gap:7px;padding:9px 15px;border-top:1px solid var(--blue)}
