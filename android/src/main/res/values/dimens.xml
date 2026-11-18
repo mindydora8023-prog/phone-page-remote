@@ -4,6 +4,9 @@
     <dimen name="gutter">24dp</dimen>
     <dimen name="brand_rule">6dp</dimen>
     <dimen name="hairline">1dp</dimen>
+    <dimen name="r_btn">11dp</dimen>
+    <dimen name="r_pill">999dp</dimen>
+    <dimen name="dot">6dp</dimen>
     <dimen name="masthead_top">22dp</dimen>
     <dimen name="section_gap">26dp</dimen>
     <dimen name="title_gap">18dp</dimen>
@@ -22,3 +25,4 @@
     <dimen name="type_chip">12sp</dimen>
     <dimen name="type_key">15sp</dimen>
 </resources>
+

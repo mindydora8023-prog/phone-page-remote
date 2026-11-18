@@ -4,7 +4,7 @@
          flips the system bar icons, so the two files never duplicate the layout. -->
     <style name="AppTheme.Base" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:windowBackground">@color/page</item>
         <item name="android:colorAccent">@color/brand_blue</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
@@ -13,3 +13,4 @@
     </style>
     <style name="AppTheme" parent="AppTheme.Base" />
 </resources>
+

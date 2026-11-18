@@ -149,8 +149,10 @@ final class Design {
     void markStatus(TextView chip, boolean emphasized) {
         chip.setTextColor(color(emphasized ? R.color.brand_blue : R.color.muted));
         chip.setTypeface(Typeface.create(SANS, emphasized ? Typeface.BOLD : Typeface.NORMAL));
-        chip.setBackground(shape(color(R.color.paper),
-                color(emphasized ? R.color.brand_blue : R.color.line)));
+        GradientDrawable pill = shape(color(R.color.card),
+                color(emphasized ? R.color.brand_blue : R.color.line));
+        pill.setCornerRadius(dp(R.dimen.r_pill));
+        chip.setBackground(pill);
     }
 
     Button primary(int label, View.OnClickListener click) {
@@ -165,8 +167,9 @@ final class Design {
         view.setMinWidth(0);
         view.setMinimumWidth(0);
         int horizontal = dp(R.dimen.gap_l);
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(color(R.color.ripple_primary)),
-                shape(color(R.color.brand_blue), color(R.color.brand_blue)), null));
+        GradientDrawable fill = shape(color(R.color.brand_blue), color(R.color.brand_blue));
+        fill.setCornerRadius(dp(R.dimen.r_btn));
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(color(R.color.ripple_primary)), fill, null));
         view.setOnClickListener(click);
         // minHeight, not a fixed height: at 200% font scale the label must grow the control.
         view.setMinHeight(dp(R.dimen.control));
@@ -190,8 +193,9 @@ final class Design {
         view.setMinWidth(0);
         view.setMinimumWidth(0);
         int horizontal = dp(R.dimen.gap_m);
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(color(R.color.ripple_secondary)),
-                shape(color(R.color.paper), color(R.color.line)), null));
+        GradientDrawable edge = shape(color(R.color.card), color(R.color.line));
+        edge.setCornerRadius(dp(R.dimen.r_pill));
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(color(R.color.ripple_secondary)), edge, null));
         view.setOnClickListener(click);
         view.setMinHeight(dp(R.dimen.chip_height));
         int vertical = dp(R.dimen.gap_s);
@@ -218,7 +222,9 @@ final class Design {
         int horizontal = dp(R.dimen.gap_l);
         int vertical = dp(R.dimen.gap_m);
         view.setPadding(horizontal, vertical, horizontal, vertical);
-        view.setBackground(shape(color(R.color.shade), color(R.color.line)));
+        GradientDrawable box = shape(color(R.color.shade), color(R.color.line));
+        box.setCornerRadius(dp(R.dimen.r_btn));
+        view.setBackground(box);
         return view;
     }
 
@@ -239,3 +245,4 @@ final class Design {
         return drawable;
     }
 }
+
