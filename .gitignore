@@ -1,0 +1,10 @@
+/.toolchain/
+/dist/
+/windows/rsrc_windows_*.syso
+/android/build/
+*.apk
+*.exe
+*.lnk
+*.p12
+*.jks
+*.keystore

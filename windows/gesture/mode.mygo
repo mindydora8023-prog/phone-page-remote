@@ -1,0 +1,16 @@
+package gesture
+
+// The protocol codes describe the finger motion on the phone.
+func Command(mode: String, action: String) -> Int
+  switch mode
+    case "reading" =>
+      if action == "next" => 1 else 2
+    case "reading-rtl" =>
+      if action == "next" => 2 else 1
+    case "video" =>
+      if action == "next" => 3 else 4
+    case "video-reversed" =>
+      if action == "next" => 4 else 3
+    case _ => 0
+  end
+end

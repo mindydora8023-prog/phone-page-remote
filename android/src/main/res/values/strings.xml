@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">手机翻页遥控</string>
+    <string name="intro">用 Windows 通过蓝牙在手机上滑动翻页。</string>
+    <string name="receiver_title">蓝牙接收</string>
+    <string name="stopped">已停止</string>
+    <string name="starting">正在启动蓝牙接收…</string>
+    <string name="listening">正在广播，可从 Windows 连接</string>
+    <string name="connected">蓝牙设备已连接，等待翻页指令</string>
+    <string name="start_receiver">启动蓝牙接收</string>
+    <string name="stop_receiver">停止蓝牙接收</string>
+    <string name="permit">授予权限</string>
+    <string name="open_app_settings">打开应用权限设置</string>
+    <string name="open_notification_settings">打开通知设置</string>
+    <string name="enable_bluetooth">打开蓝牙</string>
+    <string name="bluetooth_off">请先打开手机蓝牙。</string>
+    <string name="permissions_missing">启动接收前，请允许附近设备和通知权限。</string>
+    <string name="notifications_disabled">请启用接收通知，留出从通知停止接收的入口。</string>
+    <string name="unsupported">此手机不支持 BLE 外围设备广播。</string>
+    <string name="bluetooth_error">蓝牙启动失败（%1$d）。</string>
+    <string name="start_error">接收器启动失败，请确认蓝牙和权限状态。</string>
+    <string name="timeout">蓝牙接收器启动超时，可再次尝试。</string>
+    <string name="accessibility_title">滑动权限</string>
+    <string name="accessibility_on">无障碍服务已启用。手机亮屏并解锁时可接收滑动。</string>
+    <string name="accessibility_off">请在无障碍设置中启用「手机翻页遥控」，允许它执行滑动。</string>
+    <string name="accessibility_description">响应加密验证通过的蓝牙翻页指令，在亮屏并解锁时执行滑动。</string>
+    <string name="accessibility_settings">打开无障碍设置</string>
+    <string name="secret_title">配对密钥</string>
+    <string name="secret_help">将这 32 位十六进制字符填入 Windows 遥控工具。</string>
+    <string name="copy_secret">复制密钥</string>
+    <string name="rotate_secret">更换密钥</string>
+    <string name="rotate_confirm">更换后，Windows 需要填写新密钥才能继续控制。</string>
+    <string name="secret_copied">已复制密钥</string>
+    <string name="secret_error">保存密钥失败，请重试。</string>
+    <string name="notification_channel">蓝牙接收服务</string>
+    <string name="notification_title">手机翻页遥控正在运行</string>
+    <string name="notification_stop">停止接收</string>
+</resources>
