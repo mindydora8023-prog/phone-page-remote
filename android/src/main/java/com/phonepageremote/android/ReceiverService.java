@@ -201,7 +201,7 @@ public final class ReceiverService extends Service {
         PendingIntent stop = PendingIntent.getService(this, 1,
                 new Intent(this, ReceiverService.class).setAction(ACTION_STOP), pendingFlags);
         Notification.Builder builder = new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_pages)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(getString(R.string.notification_title))
                 .setContentText(getString(message))
                 .setContentIntent(open)
@@ -541,7 +541,7 @@ public final class ReceiverService extends Service {
         private Notification pairingNotification(String address, String code) {
             String text = getString(R.string.pair_request_text, code);
             Notification.Builder builder = new Notification.Builder(ReceiverService.this, CHANNEL)
-                    .setSmallIcon(R.drawable.ic_pages)
+                    .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle(getString(R.string.pair_request_title))
                     .setContentText(text)
                     .setStyle(new Notification.BigTextStyle().bigText(text))
@@ -609,4 +609,5 @@ public final class ReceiverService extends Service {
         }
     }
 }
+
 
