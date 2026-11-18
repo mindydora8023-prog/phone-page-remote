@@ -8,12 +8,20 @@ function Get-PageImage([int] $Size) {
     $bitmap = [Drawing.Bitmap]::new($Size, $Size, [Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $canvas = [Drawing.Graphics]::FromImage($bitmap)
     $page = [Drawing.Drawing2D.GraphicsPath]::new([Drawing.Drawing2D.FillMode]::Alternate)
+    $plate = [Drawing.Drawing2D.GraphicsPath]::new()
     $blue = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(0, 47, 167))
     $bytes = [IO.MemoryStream]::new()
     try {
         $canvas.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $canvas.ScaleTransform($Size / 48.0, $Size / 48.0)
-        $canvas.FillRectangle($blue, 2, 2, 44, 44)
+        # Rounded plate, matching the adaptive icon Android draws behind the glyph.
+        $radius = 10.0
+        $plate.AddArc(2, 2, $radius * 2, $radius * 2, 180, 90)
+        $plate.AddArc(46 - $radius * 2, 2, $radius * 2, $radius * 2, 270, 90)
+        $plate.AddArc(46 - $radius * 2, 46 - $radius * 2, $radius * 2, $radius * 2, 0, 90)
+        $plate.AddArc(2, 46 - $radius * 2, $radius * 2, $radius * 2, 90, 90)
+        $plate.CloseFigure()
+        $canvas.FillPath($blue, $plate)
         $page.AddPolygon([Drawing.PointF[]]@(
             [Drawing.PointF]::new(13, 9), [Drawing.PointF]::new(28, 9),
             [Drawing.PointF]::new(35, 16), [Drawing.PointF]::new(35, 39),
@@ -30,6 +38,7 @@ function Get-PageImage([int] $Size) {
     } finally {
         $bytes.Dispose()
         $blue.Dispose()
+        $plate.Dispose()
         $page.Dispose()
         $canvas.Dispose()
         $bitmap.Dispose()
