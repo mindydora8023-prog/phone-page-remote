@@ -81,7 +81,7 @@ public final class SetupActivity extends Activity {
 
     private void makeContent() {
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(ui.color(R.color.paper));
+        scroll.setBackgroundColor(ui.color(R.color.page));
         scroll.setFillViewport(true);
         if (Build.VERSION.SDK_INT >= 35) {
             getWindow().setDecorFitsSystemWindows(false);
@@ -354,6 +354,10 @@ public final class SetupActivity extends Activity {
         }
     }
 }
+
+
+
+
 
 
 
