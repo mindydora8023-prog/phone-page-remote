@@ -50,6 +50,8 @@ public final class SetupActivity extends Activity {
     private Button receiverButton;
     private Button settingsButton;
     private Button copyButton;
+    private LinearLayout pairBlock;
+    private TextView pairText;
     private String secret;
 
     @Override
@@ -123,6 +125,19 @@ public final class SetupActivity extends Activity {
         settingsButton = ui.addChip(receiverActions, R.string.open_app_settings, v -> openSettings());
         ui.add(body, receiverActions, 0);
 
+        // Same allow/deny as the notification, but inside the app: notifications are
+        // easy to fold away on ROMs that file unknown apps into a silent group.
+        pairBlock = ui.stack();
+        ui.section(pairBlock, R.string.pair_pending_title);
+        pairText = ui.add(pairBlock, ui.bodyText(R.string.pair_pending_text), 0);
+        LinearLayout pairActions = ui.row();
+        pairActions.setGravity(Gravity.END);
+        ui.addChip(pairActions, R.string.pair_allow, v -> approvePair(true));
+        ui.addChip(pairActions, R.string.pair_deny, v -> approvePair(false));
+        ui.add(pairBlock, pairActions, R.dimen.gap_s);
+        pairBlock.setVisibility(View.GONE);
+        ui.add(body, pairBlock, R.dimen.gap_s);
+
         ui.section(body, R.string.accessibility_title);
         gestureStatus = ui.add(body, ui.bodyText(R.string.accessibility_off), 0);
         LinearLayout gestureActions = ui.row();
@@ -170,9 +185,9 @@ public final class SetupActivity extends Activity {
     }
 
     /** Reflect one receiver state in the chip plus the explanation line. */
-    private void setReceiverState(int state, String message) {
+    private void setReceiverState(int state, boolean emphasized, String message) {
         receiverStatus.setText(state);
-        ui.markStatus(receiverStatus, state != R.string.stopped);
+        ui.markStatus(receiverStatus, emphasized);
         receiverMessage.setText(message);
     }
 
@@ -180,49 +195,57 @@ public final class SetupActivity extends Activity {
         gestureStatus.setText(PageGestureService.isConnected()
                 ? R.string.accessibility_on : R.string.accessibility_off);
         settingsButton.setVisibility(View.GONE);
-        receiverButton.setEnabled(true);
-        receiverButton.setAlpha(1f);
-        if (ReceiverService.active()) {
-            setReceiverState(R.string.state_running, ReceiverService.statusText(this));
-            receiverButton.setText(R.string.stop_receiver);
-            return;
+
+        BluetoothAdapter adapter = adapter();
+        int reported = ReceiverService.statusResource();
+        SetupState.Next next = SetupState.decide(
+                ReceiverService.active(),
+                !missingPermissions().isEmpty(),
+                ReceiverService.notificationsReady(this),
+                adapter != null,
+                adapter != null && adapter.isEnabled(),
+                reported == R.string.starting,
+                reported == R.string.bluetooth_error);
+
+        int chip;
+        switch (next.chip) {
+            case RUNNING: chip = R.string.state_running; break;
+            case PERMISSION: chip = R.string.state_permission; break;
+            case STARTING: chip = R.string.state_starting; break;
+            case FAILED: chip = R.string.state_failed; break;
+            default: chip = R.string.stopped; break;
         }
-        if (!missingPermissions().isEmpty()) {
-            setReceiverState(R.string.state_permission, getString(R.string.permissions_missing));
-            receiverButton.setText(R.string.permit);
+        String message;
+        switch (next.message) {
+            case PERMISSIONS_MISSING: message = getString(R.string.permissions_missing); break;
+            case NOTIFICATIONS_DISABLED: message = getString(R.string.notifications_disabled); break;
+            case UNSUPPORTED: message = getString(R.string.unsupported); break;
+            case BLUETOOTH_OFF: message = getString(R.string.bluetooth_off); break;
+            default: message = ReceiverService.statusText(this); break;
+        }
+        int label;
+        switch (next.action) {
+            case STOP: label = R.string.stop_receiver; break;
+            case PERMISSION: label = R.string.permit; break;
+            case NOTIFICATIONS: label = R.string.open_notification_settings; break;
+            case ENABLE_BLUETOOTH: label = R.string.enable_bluetooth; break;
+            default: label = R.string.start_receiver; break;
+        }
+
+        ReceiverService.PairInfo pending = ReceiverService.pendingPair();
+        pairBlock.setVisibility(pending == null ? View.GONE : View.VISIBLE);
+        if (pending != null) {
+            pairText.setText(getString(R.string.pair_pending_text, pending.code));
+        }
+
+        setReceiverState(chip, next.emphasized, message);
+        receiverButton.setText(label);
+        receiverButton.setEnabled(next.buttonEnabled);
+        receiverButton.setAlpha(next.buttonEnabled ? 1f : 0.5f);
+        if (next.action == SetupState.Action.PERMISSION) {
             settingsButton.setText(R.string.open_app_settings);
             settingsButton.setVisibility(View.VISIBLE);
-            return;
         }
-        if (!ReceiverService.notificationsReady(this)) {
-            setReceiverState(R.string.state_permission, getString(R.string.notifications_disabled));
-            receiverButton.setText(R.string.open_notification_settings);
-            return;
-        }
-        BluetoothAdapter adapter = adapter();
-        if (adapter == null) {
-            setReceiverState(R.string.stopped, getString(R.string.unsupported));
-            receiverButton.setText(R.string.start_receiver);
-            receiverButton.setEnabled(false);
-            receiverButton.setAlpha(0.5f);
-            return;
-        }
-        if (!adapter.isEnabled()) {
-            setReceiverState(R.string.stopped, getString(R.string.bluetooth_off));
-            receiverButton.setText(R.string.enable_bluetooth);
-            return;
-        }
-        // Idle as far as the UI can tell: the service itself may still be starting or
-        // have failed with a Bluetooth error, and that belongs in the chip too.
-        int reported = ReceiverService.statusResource();
-        int state = R.string.stopped;
-        if (reported == R.string.starting) {
-            state = R.string.state_starting;
-        } else if (reported == R.string.bluetooth_error) {
-            state = R.string.state_failed;
-        }
-        setReceiverState(state, ReceiverService.statusText(this));
-        receiverButton.setText(R.string.start_receiver);
     }
 
     private void receiverAction() {
@@ -248,8 +271,19 @@ public final class SetupActivity extends Activity {
                     startForegroundService(new Intent(this, ReceiverService.class));
                 }
             } catch (IllegalStateException | SecurityException e) {
-                setReceiverState(R.string.state_failed, getString(R.string.start_error));
+                setReceiverState(R.string.state_failed, true, getString(R.string.start_error));
             }
+        }
+    }
+
+    private void approvePair(boolean allow) {
+        ReceiverService.PairInfo pending = ReceiverService.pendingPair();
+        if (pending != null) {
+            ReceiverService.decidePair(pending.address, allow);
+            // An allowed pairing replaces the key: show the new one right away
+            // instead of waiting for the next onResume.
+            if (allow) loadSecret();
+            refresh();
         }
     }
 
@@ -314,3 +348,5 @@ public final class SetupActivity extends Activity {
         }
     }
 }
+
+

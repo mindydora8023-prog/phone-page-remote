@@ -16,6 +16,8 @@
 
 页面由代码构建（`SetupActivity` 只做状态与接线，视图全部来自 `Design.java`），因为本构建链没有 Gradle，也就没有 AppCompat/Material 可依赖。为了让它客观上仍是同一个产品，结构固定为：满宽 6dp 品牌条 → display 级标题（34sp、字距 -0.03em、随宽度 autosize 到 20sp）＋右上角实时状态标签 → 用 1dp 发丝线分节，每节「18sp 标题 + 14sp 说明 + 一个满宽蓝色主按钮 + 右对齐的次级 chip」。配对密钥用等宽字（15sp、字距 +0.04em）放进描边卡片，对应 Windows 的键帽。
 
+免密配对靠第三条 GATT 特征 `PAIR`（读写）：电脑写入自己生成的密钥，随后轮询读回结果；手机同时弹出通知、并在设置页顶部出现「待确认的配对」卡片（通知容易被国产 ROM 折叠，卡片是可靠入口），60 秒未决定即超时。旧版电脑不会去找这条特征，因此新旧两端可以混用。
+
 状态标签覆盖五种真实状态：已停止（安静）、待授权、启动中、启动失败、接收中（后三者转品牌蓝加粗），状态来源是 `ReceiverService.statusResource()`，不是界面自己猜的。
 
 夜间模式由 `values-night/colors.xml` 提供同一套角色的深色值，并在 `values-night/styles.xml` 里翻转系统栏图标；宽屏（横屏、平板）下正文列居中且最大 648dp。控件用 `minHeight` 而非固定高度，系统字号放大到 200% 时按钮与小块会一起长高。
@@ -26,6 +28,8 @@
 
 在本目录用 PowerShell 执行 `./build.ps1`。构建脚本接受 `-SdkRoot` 和 `-JdkHome`，也支持环境变量 `ANDROID_SDK_ROOT`、`ANDROID_HOME`、`JAVA_HOME`。本机使用 JDK 11.0.14，并使用 `../.toolchain/android/` 下从 Google 下载的 Android SDK Platform 36 rev 2 和 Build Tools 36.0.0。构建使用 AAPT2、javac、D8、zipalign 和 apksigner，调试签名密钥写到 `../.toolchain/android/page-remote-debug.p12`，供再次构建时复用。
 
-构建会先运行 39 条 JVM 协议断言，再编译、签名并核验对齐与签名。断言覆盖独立 HMAC 测试向量、5 种命令、地址隔离、一次性挑战、失败后失效、到期、断连、停止和密钥更新。可用 `aapt2 dump badging` 以及 `aapt2 dump xmltree --file AndroidManifest.xml` 检查成品。
+构建会先运行三组纯 JVM 断言——39 条协议断言、16 条界面状态断言、16 条配对帧断言——再编译、签名并核验对齐与签名。协议断言覆盖独立 HMAC 测试向量、5 种命令、地址隔离、一次性挑战、失败后失效、到期、断连、停止和密钥更新；状态断言覆盖 `SetupState` 的五态决策优先级（运行中 > 权限 > 通知 > 蓝牙不可用/未开 > 启动中 > 启动失败 > 空闲）与"只有已停止是安静标签"的强调规则；配对帧断言覆盖 `PairRequest` 的 17 字节报文、非法写入拒绝，以及与 Windows 端逐位一致的 6 位校验码（同一个密钥两边必须算出 `702144`）。可用 `aapt2 dump badging` 以及 `aapt2 dump xmltree --file AndroidManifest.xml` 检查成品。
 
 在具备 BLE 外围设备模式的测试机上，可从 Windows 连接并依次验证 ping、四个方向、滑动时快速按键、锁屏和解锁、错误密钥及更换密钥、从通知停止。收到 GATT 写成功表示系统已接受滑动请求，手势最终完成还取决于屏幕与系统输入状态。
+
+

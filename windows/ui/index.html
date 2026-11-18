@@ -19,9 +19,15 @@
       <p id="initial">在安卓手机上打开「手机翻页遥控」并启动蓝牙接收。</p>
       <form id="pair" hidden autocomplete="off">
         <label>附近的接收端<select id="phones" required></select></label>
-        <label>手机连接码<input id="code" type="password" maxlength="32" placeholder="32 位连接码" spellcheck="false" required></label>
+        <label>手机连接码<input id="code" type="password" maxlength="32" placeholder="32 位连接码" spellcheck="false"></label>
         <button id="connect" class="primary" type="submit">连接</button>
       </form>
+      <div id="pair-extra" hidden>
+        <span id="remembered-hint">已记住此手机的密钥，连接时连接码可留空。</span>
+        <button id="pair-device" type="button">免密配对</button>
+        <button id="forget" type="button" hidden>忘记密钥</button>
+      </div>
+      <p id="pairing" hidden>在手机上核对这 6 位数字并点「允许」：<strong id="pair-code"></strong></p>
       <div id="connected" hidden><strong id="device"></strong><button id="disconnect" type="button">断开</button></div>
       <p id="message" role="status" aria-live="polite" hidden></p>
     </section>

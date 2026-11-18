@@ -22,6 +22,7 @@ import (
 const serviceID = "{0054E118-E465-4B7F-85E7-1B0963092301}"
 const challengeID = "{0054E118-E465-4B7F-85E7-1B0963092302}"
 const commandID = "{0054E118-E465-4B7F-85E7-1B0963092303}"
+const pairID = "{0054E118-E465-4B7F-85E7-1B0963092304}"
 
 var errPhoneRejected = errors.New("手机拒绝了此操作")
 
@@ -37,6 +38,7 @@ type bleLink struct {
 	service   *gatt.GattDeviceService
 	challenge *gatt.GattCharacteristic
 	command   *gatt.GattCharacteristic
+	pair      *gatt.GattCharacteristic
 	secret    [16]byte
 }
 
@@ -220,6 +222,132 @@ func openBLE(target phone, secret [16]byte) (*bleLink, error) {
 	return link, nil
 }
 
+// Pairing result bytes, mirroring PairRequest on the phone.
+const (
+	pairPending = 0
+	pairAllowed = 1
+	pairDenied  = 2
+	pairTimeout = 3
+	pairIdle    = 4
+)
+
+// errNoPairing means the phone predates the PAIR characteristic.
+var errNoPairing = errors.New("PAIR_UNSUPPORTED")
+
+// prepare connects and discovers the service without authenticating: pairing has
+// to happen before any key is shared, so no challenge can be signed yet.
+func prepare(target phone) (*bleLink, error) {
+	device, err := asyncResult[bluetooth.BluetoothLEDevice](12 * time.Second)(
+		bluetooth.BluetoothLEDeviceFromBluetoothAddressWithBluetoothAddressTypeAsync(target.address, target.kind))
+	if err != nil {
+		return nil, err
+	}
+	link := &bleLink{device: device}
+	ready := false
+	defer func() {
+		if !ready {
+			link.close()
+		}
+	}()
+	if err := link.discover(); err != nil {
+		return nil, err
+	}
+	ready = true
+	return link, nil
+}
+
+// pairPhone sends the key this computer invented and waits for the person holding
+// the phone to compare the six digits and allow it.
+func pairPhone(target phone, secret [16]byte) (byte, error) {
+	link, err := prepare(target)
+	if err != nil {
+		return 0, err
+	}
+	defer link.close()
+	if link.pair == nil {
+		return 0, errNoPairing
+	}
+	if err := link.writePair(pairRequest(secret)); err != nil {
+		return 0, err
+	}
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(400 * time.Millisecond)
+		result, err := link.readPair()
+		if err != nil {
+			return 0, err
+		}
+		if result != pairPending && result != pairIdle {
+			return result, nil
+		}
+	}
+	return pairTimeout, nil
+}
+
+// pairRequest frames the key the way PairRequest.build does on the phone.
+func pairRequest(secret [16]byte) []byte {
+	value := make([]byte, 17)
+	value[0] = 1
+	copy(value[1:], secret[:])
+	return value
+}
+
+func (l *bleLink) writePair(value []byte) error {
+	writer, err := streams.NewDataWriter()
+	if err != nil {
+		return err
+	}
+	defer writer.Release()
+	if err := writer.WriteBytes(uint32(len(value)), value); err != nil {
+		return err
+	}
+	buffer, err := writer.DetachBuffer()
+	if err != nil {
+		return err
+	}
+	defer buffer.Release()
+	op, err := l.pair.WriteValueWithOptionAsync(buffer, gatt.GattWriteOptionWriteWithResponse)
+	if err != nil {
+		return err
+	}
+	defer op.Release()
+	if err := awaitWinRT(op, 8*time.Second); err != nil {
+		return err
+	}
+	status, err := op.GetResults()
+	return gattStatus(gatt.GattCommunicationStatus(uintptr(status)), err)
+}
+
+func (l *bleLink) readPair() (byte, error) {
+	result, err := asyncResult[gatt.GattReadResult](5 * time.Second)(
+		l.pair.ReadValueWithCacheModeAsync(bluetooth.BluetoothCacheModeUncached))
+	if err != nil {
+		return 0, err
+	}
+	defer result.Release()
+	if status, err := result.GetStatus(); err != nil || status != gatt.GattCommunicationStatusSuccess {
+		return 0, gattStatus(status, err)
+	}
+	buffer, err := result.GetValue()
+	if err != nil || buffer == nil {
+		return 0, errors.New("手机未返回配对结果")
+	}
+	defer buffer.Release()
+	reader, err := streams.DataReaderFromBuffer(buffer)
+	if err != nil {
+		return 0, err
+	}
+	defer reader.Release()
+	if size, err := buffer.GetLength(); err != nil || size != 1 {
+		return 0, errors.New("配对结果长度不正确")
+	}
+	one, err := reader.ReadBytes(1)
+	if err != nil {
+		return 0, err
+	}
+	return one[0], nil
+}
+
 func (l *bleLink) discover() error {
 	servicesResult, err := asyncResult[gatt.GattDeviceServicesResult](15 * time.Second)(l.device.GetGattServicesWithCacheModeAsync(bluetooth.BluetoothCacheModeUncached))
 	if err != nil {
@@ -278,6 +406,7 @@ func (l *bleLink) discoverCharacteristics() error {
 	}
 	challenge := syscall.GUID(*ole.NewGUID(challengeID))
 	command := syscall.GUID(*ole.NewGUID(commandID))
+	pair := syscall.GUID(*ole.NewGUID(pairID))
 	for i := uint32(0); i < count; i++ {
 		ptr, err := chars.GetAt(i)
 		if err != nil {
@@ -290,6 +419,8 @@ func (l *bleLink) discoverCharacteristics() error {
 			l.challenge = item
 		case err == nil && id == command && l.command == nil:
 			l.command = item
+		case err == nil && id == pair && l.pair == nil:
+			l.pair = item
 		default:
 			item.Release()
 		}
@@ -301,6 +432,10 @@ func (l *bleLink) discoverCharacteristics() error {
 }
 
 func (l *bleLink) close() {
+	if l.pair != nil {
+		l.pair.Release()
+		l.pair = nil
+	}
 	if l.challenge != nil {
 		l.challenge.Release()
 	}

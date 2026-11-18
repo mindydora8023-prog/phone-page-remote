@@ -41,6 +41,10 @@ $source = Join-Path $project 'src\main'
 $packagePath = 'com\phonepageremote\android'
 $protocol = Join-Path $source "java\$packagePath\PageProtocol.java"
 $protocolTest = Join-Path $project "src\test\java\$packagePath\PageProtocolTest.java"
+$setupState = Join-Path $source "java\$packagePath\SetupState.java"
+$setupStateTest = Join-Path $project "src\test\java\$packagePath\SetupStateTest.java"
+$pairRequest = Join-Path $source "java\$packagePath\PairRequest.java"
+$pairRequestTest = Join-Path $project "src\test\java\$packagePath\PairRequestTest.java"
 $build = Join-Path $project 'build'
 $work = Join-Path $build 'intermediates'
 $classes = Join-Path $work 'classes'
@@ -61,8 +65,11 @@ try {
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Force -Recurse }
     New-Item -ItemType Directory -Force -Path $classes, $testClasses, $dex, $output, $toolchain | Out-Null
 
-    Invoke-Tool $javac @('--release', '8', '-encoding', 'UTF-8', '-d', $testClasses, $protocol, $protocolTest)
+    Invoke-Tool $javac @('--release', '8', '-encoding', 'UTF-8', '-d', $testClasses, $protocol, $protocolTest,
+        $setupState, $setupStateTest, $pairRequest, $pairRequestTest)
     Invoke-Tool $java @('-cp', $testClasses, 'com.phonepageremote.android.PageProtocolTest')
+    Invoke-Tool $java @('-cp', $testClasses, 'com.phonepageremote.android.SetupStateTest')
+    Invoke-Tool $java @('-cp', $testClasses, 'com.phonepageremote.android.PairRequestTest')
 
     Invoke-Tool $aapt2 @('compile', '--dir', (Join-Path $source 'res'), '-o', $resources)
     Invoke-Tool $aapt2 @('link', '-I', $androidJar, '--manifest', (Join-Path $source 'AndroidManifest.xml'),

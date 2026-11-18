@@ -33,13 +33,18 @@ import android.os.SystemClock;
 import android.util.Log;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public final class ReceiverService extends Service {
     private static final String ACTION_STOP = "com.phonepageremote.android.STOP";
     static final String CHANNEL = "ble_receiver";
     private static final int NOTIFICATION_ID = 26;
+    private static final int PAIR_NOTIFICATION_ID = 27;
+    private static final long PAIR_TIMEOUT_MS = 60_000L;
     private static final int ATT_UNLIKELY_ERROR = 0x0e;
     private static final long START_TIMEOUT_MS = 8_000L;
     private static int status = R.string.stopped;
@@ -87,6 +92,29 @@ public final class ReceiverService extends Service {
     static void updateSecret(byte[] secret) {
         if (liveSession != null) {
             liveSession.protocol.replaceSecret(secret);
+        }
+    }
+
+    /** Called from the pairing notification's allow/deny actions. */
+    static void decidePair(String address, boolean allow) {
+        if (liveSession != null) {
+            liveSession.decide(address, allow);
+        }
+    }
+
+    /** The pair request waiting for a person, so the app itself can ask (notifications
+     *  are easy to fold away on some ROMs). Null when nothing is pending. */
+    static PairInfo pendingPair() {
+        return liveSession == null ? null : liveSession.pendingPair();
+    }
+
+    static final class PairInfo {
+        final String address;
+        final String code;
+
+        PairInfo(String address, String code) {
+            this.address = address;
+            this.code = code;
         }
     }
 
@@ -232,6 +260,8 @@ public final class ReceiverService extends Service {
         final PageProtocol protocol;
         private final BluetoothLeAdvertiser advertiser;
         private final Set<String> connected = new HashSet<>();
+        /** Key waiting for the user's yes/no, one per connected computer. */
+        private final Map<String, PairAttempt> pairs = new HashMap<>();
         private BluetoothGattServer server;
         private boolean advertisingRequested;
         private boolean ready;
@@ -340,6 +370,12 @@ public final class ReceiverService extends Service {
                     BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ));
             service.addCharacteristic(new BluetoothGattCharacteristic(PageProtocol.COMMAND,
                     BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE));
+            // Pairing: the computer writes a key it invented, then polls this for the
+            // decision. An older computer never looks this characteristic up, so both
+            // generations keep working against this receiver.
+            service.addCharacteristic(new BluetoothGattCharacteristic(PageProtocol.PAIR,
+                    BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_WRITE,
+                    BluetoothGattCharacteristic.PERMISSION_READ | BluetoothGattCharacteristic.PERMISSION_WRITE));
             if (server.addService(service)) {
                 main.postDelayed(timeout, START_TIMEOUT_MS);
             } else {
@@ -382,6 +418,8 @@ public final class ReceiverService extends Service {
             protocol.invalidate(address);
             if (offset != 0) {
                 respond(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, null);
+            } else if (PageProtocol.PAIR.equals(characteristic.getUuid())) {
+                respond(device, requestId, BluetoothGatt.GATT_SUCCESS, new byte[] { pairResult(address) });
             } else if (ready && connected.contains(address)
                     && PageProtocol.CHALLENGE.equals(characteristic.getUuid())) {
                 byte[] challenge = protocol.issue(address);
@@ -400,7 +438,8 @@ public final class ReceiverService extends Service {
             }
             String address = device.getAddress();
             int result;
-            if (!responseNeeded || preparedWrite || !PageProtocol.COMMAND.equals(characteristic.getUuid())) {
+            boolean pairing = PageProtocol.PAIR.equals(characteristic.getUuid());
+            if (!responseNeeded || preparedWrite) {
                 protocol.invalidate(address);
                 result = BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED;
             } else if (offset != 0) {
@@ -409,6 +448,17 @@ public final class ReceiverService extends Service {
             } else if (!ready || !connected.contains(address)) {
                 protocol.invalidate(address);
                 result = ATT_UNLIKELY_ERROR;
+            } else if (pairing) {
+                byte[] key = PairRequest.parse(value);
+                if (key == null) {
+                    result = ATT_UNLIKELY_ERROR;
+                } else {
+                    beginPair(address, key);
+                    result = BluetoothGatt.GATT_SUCCESS;
+                }
+            } else if (!PageProtocol.COMMAND.equals(characteristic.getUuid())) {
+                protocol.invalidate(address);
+                result = BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED;
             } else {
                 int command = protocol.consume(address, value);
                 boolean accepted = command == 0 || (command > 0 && PageGestureService.trySwipe(command));
@@ -416,6 +466,115 @@ public final class ReceiverService extends Service {
             }
             if (responseNeeded) {
                 respond(device, requestId, result, null);
+            }
+        }
+
+        /** The request the app screen shows, so the answer does not depend on a notification. */
+        PairInfo pendingPair() {
+            long now = SystemClock.elapsedRealtime();
+            for (Map.Entry<String, PairAttempt> entry : pairs.entrySet()) {
+                PairAttempt attempt = entry.getValue();
+                if (attempt.result == PairRequest.RESULT_PENDING && now <= attempt.deadline) {
+                    return new PairInfo(entry.getKey(), attempt.code);
+                }
+            }
+            return null;
+        }
+
+        /** What the computer polls while it waits: pending, allowed, denied, timed out. */
+        private byte pairResult(String address) {            PairAttempt attempt = pairs.get(address);
+            if (attempt == null) {
+                return PairRequest.RESULT_IDLE;
+            }
+            return SystemClock.elapsedRealtime() > attempt.deadline
+                    ? PairRequest.RESULT_TIMEOUT : attempt.result;
+        }
+
+        /** The computer proposed a key: ask the person holding the phone. */
+        private void beginPair(String address, byte[] key) {
+            PairAttempt attempt = new PairAttempt(key, PairRequest.code(key),
+                    SystemClock.elapsedRealtime() + PAIR_TIMEOUT_MS);
+            pairs.put(address, attempt);
+            getSystemService(NotificationManager.class)
+                    .notify(PAIR_NOTIFICATION_ID, pairingNotification(address, attempt.code));
+            refreshSetup();
+            main.postDelayed(() -> {
+                PairAttempt current = pairs.get(address);
+                if (current == attempt && current.result == PairRequest.RESULT_PENDING) {
+                    current.result = PairRequest.RESULT_TIMEOUT;
+                    getSystemService(NotificationManager.class).cancel(PAIR_NOTIFICATION_ID);
+                }
+            }, PAIR_TIMEOUT_MS);
+        }
+
+        /** The allow/deny action, or the timeout, settles the attempt. */
+        void decide(String address, boolean allow) {
+            PairAttempt attempt = pairs.get(address);
+            if (attempt == null) {
+                return;
+            }
+            getSystemService(NotificationManager.class).cancel(PAIR_NOTIFICATION_ID);
+            refreshSetup();
+            if (SystemClock.elapsedRealtime() > attempt.deadline) {
+                attempt.result = PairRequest.RESULT_TIMEOUT;
+                Arrays.fill(attempt.secret, (byte) 0);
+                return;
+            }
+            if (!allow) {
+                attempt.result = PairRequest.RESULT_DENIED;
+                Arrays.fill(attempt.secret, (byte) 0);
+                return;
+            }
+            try {
+                new SecretStore(ReceiverService.this).save(attempt.secret);
+                protocol.replaceSecret(attempt.secret);
+                attempt.result = PairRequest.RESULT_ALLOWED;
+                report(R.string.paired, 0);
+            } catch (IOException e) {
+                Log.w("PageRemote", "Pairing key could not be stored", e);
+                attempt.result = PairRequest.RESULT_DENIED;
+            } finally {
+                Arrays.fill(attempt.secret, (byte) 0);
+            }
+        }
+
+        private Notification pairingNotification(String address, String code) {
+            String text = getString(R.string.pair_request_text, code);
+            Notification.Builder builder = new Notification.Builder(ReceiverService.this, CHANNEL)
+                    .setSmallIcon(R.drawable.ic_pages)
+                    .setContentTitle(getString(R.string.pair_request_title))
+                    .setContentText(text)
+                    .setStyle(new Notification.BigTextStyle().bigText(text))
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(false)
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
+                    .addAction(new Notification.Action.Builder(null, getString(R.string.pair_allow),
+                            pairIntent(address, true, 2)).build())
+                    .addAction(new Notification.Action.Builder(null, getString(R.string.pair_deny),
+                            pairIntent(address, false, 3)).build());
+            return builder.build();
+        }
+
+        private PendingIntent pairIntent(String address, boolean allow, int requestCode) {
+            Intent intent = new Intent(ReceiverService.this, PairDecisionReceiver.class)
+                    .setAction(PairDecisionReceiver.ACTION)
+                    .putExtra(PairDecisionReceiver.EXTRA_ADDRESS, address)
+                    .putExtra(PairDecisionReceiver.EXTRA_ALLOW, allow);
+            return PendingIntent.getBroadcast(ReceiverService.this, requestCode, intent,
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        }
+
+        /** One computer's pending pairing request. */
+        private final class PairAttempt {
+            final byte[] secret;
+            final String code;
+            final long deadline;
+            byte result = PairRequest.RESULT_PENDING;
+
+            PairAttempt(byte[] secret, String code, long deadline) {
+                this.secret = secret;
+                this.code = code;
+                this.deadline = deadline;
             }
         }
 
@@ -450,3 +609,4 @@ public final class ReceiverService extends Service {
         }
     }
 }
+

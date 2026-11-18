@@ -20,6 +20,18 @@ final class SecretStore {
         return current != null ? current : saveNew();
     }
 
+    /** Adopts a key the computer proposed after the user approved the pairing. */
+    void save(byte[] key) throws IOException {
+        if (key == null || key.length != PageProtocol.KEY_LENGTH) {
+            throw new IOException("Unexpected key length");
+        }
+        String previous = preferences.getString(KEY, null);
+        if (!preferences.edit().putString(KEY, encode(key)).commit()) {
+            preferences.edit().putString(KEY, previous).commit();
+            throw new IOException("Pairing secret could not be persisted");
+        }
+    }
+
     byte[] saveNew() throws IOException {
         byte[] next = new byte[PageProtocol.KEY_LENGTH];
         new SecureRandom().nextBytes(next);

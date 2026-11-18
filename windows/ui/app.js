@@ -12,6 +12,7 @@ const direction = {
 };
 const phases = {
   scanning: "\u626b\u63cf\u4e2d", connecting: "\u8fde\u63a5\u4e2d", disconnecting: "\u6b63\u5728\u65ad\u5f00",
+  pairing: "\u914d\u5bf9\u4e2d",
 };
 let state;
 let capture = null;
@@ -83,6 +84,14 @@ function render(next) {
   $("message").hidden = !state.message;
   $("message").textContent = state.message;
   $("message").dataset.error = state.problem;
+  // A remembered key means the code field may stay empty on the next connection.
+  $("code").placeholder = state.remembered ? "已记住，可留空" : "32 位连接码";
+  $("pair-extra").hidden = !(waiting || connected);
+  $("remembered-hint").hidden = !state.remembered;
+  $("forget").hidden = !state.remembered;
+  $("pair-device").hidden = connected || busy;
+  $("pairing").hidden = !state.pairing;
+  if (state.pairing) $("pair-code").textContent = state.pairCode || "";
   const list = JSON.stringify(state.phones);
   if (list !== phoneList) {
     phoneList = list;
@@ -230,6 +239,8 @@ $("pair").onsubmit = (event) => {
   void change("Connect", $("phones").value, $("code").value);
 };
 $("disconnect").onclick = () => change("Disconnect");
+$("forget").onclick = () => change("ForgetSecret");
+$("pair-device").onclick = () => change("Pair", $("phones").value);
 $("mode").onchange = () => change("SetMode", $("mode").value);
 $("global").onclick = () => change("SetGlobal", !state.global);
 for (const action of ["prev", "next"]) {

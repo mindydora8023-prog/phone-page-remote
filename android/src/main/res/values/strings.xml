@@ -36,7 +36,15 @@
     <string name="rotate_confirm">更换后，Windows 需要填写新密钥才能继续控制。</string>
     <string name="secret_copied">已复制密钥</string>
     <string name="secret_error">保存密钥失败，请重试。</string>
+    <string name="pair_request_title">配对请求</string>
+    <string name="pair_request_text">一台电脑想控制这台手机。核对电脑上显示的数字：%1$s</string>
+    <string name="pair_pending_title">待确认的配对</string>
+    <string name="pair_pending_text">一台电脑请求配对。请核对电脑上显示的数字：%1$s</string>
+    <string name="pair_allow">允许</string>
+    <string name="pair_deny">拒绝</string>
+    <string name="paired">已允许这台电脑，之后连接无需再输入配对密钥。</string>
     <string name="notification_channel">蓝牙接收服务</string>
     <string name="notification_title">手机翻页遥控正在运行</string>
     <string name="notification_stop">停止接收</string>
 </resources>
+

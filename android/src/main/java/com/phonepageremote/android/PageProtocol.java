@@ -17,6 +17,7 @@ final class PageProtocol {
     static final UUID SERVICE = UUID.fromString("0054e118-e465-4b7f-85e7-1b0963092301");
     static final UUID CHALLENGE = UUID.fromString("0054e118-e465-4b7f-85e7-1b0963092302");
     static final UUID COMMAND = UUID.fromString("0054e118-e465-4b7f-85e7-1b0963092303");
+    static final UUID PAIR = UUID.fromString("0054e118-e465-4b7f-85e7-1b0963092304");
     static final int KEY_LENGTH = 16;
     static final int INVALID = -1;
     private static final int TAG_LENGTH = 16;

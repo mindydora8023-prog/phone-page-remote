@@ -66,6 +66,11 @@ button.primary:enabled:hover{background:var(--paper);color:var(--brand-text)}
 #pair input,#pair select{min-width:0;color:var(--ink);width:100%}
 #code{letter-spacing:.035em}
 #code::placeholder{letter-spacing:normal}
+#pair-extra{display:flex;justify-content:flex-end;align-items:center;gap:var(--s2);margin-top:var(--s2)}
+#remembered-hint{font-size:var(--type-micro);color:var(--muted)}
+#pair-extra button{font-size:var(--type-caption);white-space:nowrap;color:var(--brand-text)}
+#pairing{margin-top:var(--s2);padding:10px 12px;border:1px solid var(--brand-text);color:var(--brand-text);font-size:var(--type-caption)}
+#pair-code{font:800 20px/1 var(--font);letter-spacing:.12em;margin-left:6px}
 #message[data-error="true"],#alert{color:var(--brand-text);font-weight:700}
 .mode-label select{font-size:var(--type-caption)}
 .action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--brand);margin-top:13px}

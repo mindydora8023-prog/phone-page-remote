@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +25,14 @@ type preferences struct {
 	Next string `json:"next"`
 }
 
+// settings is what lands on disk: the UI preferences plus the last pairing key
+// that worked. The key is kept out of preferences so State() never ships it to
+// the page, and it is separate from the snapshot so a screenshot cannot leak it.
+type settings struct {
+	preferences
+	Code string `json:"code,omitempty"`
+}
+
 type snapshot struct {
 	Settings preferences `json:"settings"`
 	Phones   []phone     `json:"phones"`
@@ -34,6 +43,12 @@ type snapshot struct {
 	Problem  bool        `json:"problem"`
 	Last     string      `json:"last"`
 	Sent     uint64      `json:"sent"`
+	// Remembered tells the page it can connect without asking for the key again.
+	Remembered bool `json:"remembered"`
+	// Pairing is true while the phone is being asked; PairCode is the six digits
+	// the person has to see on both screens.
+	Pairing  bool   `json:"pairing"`
+	PairCode string `json:"pairCode,omitempty"`
 }
 
 type Remote struct {
@@ -42,19 +57,39 @@ type Remote struct {
 	state  snapshot
 	ble    *bleWorker
 	file   string
+	secret [16]byte
+	hasKey bool
 }
 
 func newRemote(file string) *Remote {
-	settings := preferences{Mode: "reading", Prev: "F9", Next: "F10"}
+	prefs := preferences{Mode: "reading", Prev: "F9", Next: "F10"}
+	var secret [16]byte
+	var hasKey bool
+	upgrade := false
 	data, err := os.ReadFile(file)
 	if err == nil {
-		var saved preferences
-		if json.Unmarshal(data, &saved) == nil && gesture.Command(saved.Mode, "next") != 0 &&
-			validKey(saved.Prev) && validKey(saved.Next) && saved.Prev != saved.Next {
-			settings = saved
+		var loaded settings
+		if json.Unmarshal(data, &loaded) == nil {
+			if gesture.Command(loaded.Mode, "next") != 0 && validKey(loaded.Prev) &&
+				validKey(loaded.Next) && loaded.Prev != loaded.Next {
+				prefs = loaded.preferences
+			}
+			if key, ok := decodeStoredCode(loaded.Code); ok {
+				secret, hasKey = key, true
+				// A plain-text key from an older version is rewritten sealed on save.
+				upgrade = legacyPlainCode(loaded.Code)
+			}
 		}
 	}
-	return &Remote{file: file, ble: newBLEWorker(), state: snapshot{Settings: settings, Phones: []phone{}}}
+	remote := &Remote{file: file, ble: newBLEWorker(),
+		state: snapshot{Settings: prefs, Phones: []phone{}}, secret: secret, hasKey: hasKey}
+	remote.state.Remembered = hasKey
+	if upgrade {
+		if err := remote.writeFile(prefs, secret, hasKey); err != nil {
+			remote.state.Problem = true
+		}
+	}
+	return remote
 }
 
 func (r *Remote) State() snapshot {
@@ -96,13 +131,10 @@ func (r *Remote) Scan() error {
 }
 
 func (r *Remote) Connect(id, code string) error {
-	decoded, err := hex.DecodeString(strings.TrimSpace(code))
-	if err != nil || len(decoded) != 16 {
-		return errors.New("请输入手机上显示的 32 位十六进制连接码")
+	secret, remembered, err := r.secretFor(code)
+	if err != nil {
+		return err
 	}
-	secret := [16]byte(decoded)
-	clear(decoded)
-	defer clear(secret[:])
 	r.mu.Lock()
 	if r.state.Phase != "" || r.state.Device != "" {
 		r.mu.Unlock()
@@ -129,18 +161,177 @@ func (r *Remote) Connect(id, code string) error {
 		}
 		return err
 	})
+	clear(secret[:])
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.state.Phase = ""
 	if errors.Is(err, errPhoneRejected) {
-		r.setMessage("验证失败。请核对连接码，并确认接收端和无障碍服务已打开。", true)
+		if remembered {
+			// The phone's key was rotated, or this is a different phone. Drop the
+			// stored key so the next attempt asks for the current one.
+			r.forgetSecretLocked()
+			r.setMessage("记住的密钥已失效。请在手机上核对配对密钥后重新输入。", true)
+		} else {
+			r.setMessage("验证失败。请核对连接码，并确认接收端和无障碍服务已打开。", true)
+		}
 	} else if err != nil {
 		r.setMessage("连接失败："+err.Error()+"。请重新扫描手机。", true)
 	} else {
 		r.state.Device = target.Name
+		r.rememberSecretLocked(secret)
 		r.setMessage("手机已连接。打开小说或短视频，即可试发翻页。", false)
 	}
 	return nil
+}
+
+// Pair invents the key for this computer, asks the phone to show a matching six
+// digit code, and connects once the person holding the phone allows it.
+func (r *Remote) Pair(id string) error {
+	r.mu.Lock()
+	if r.state.Phase != "" || r.state.Device != "" {
+		r.mu.Unlock()
+		return errors.New("请先断开手机再配对")
+	}
+	var target phone
+	for _, item := range r.state.Phones {
+		if item.ID == id {
+			target = item
+			break
+		}
+	}
+	if target.ID == "" {
+		r.mu.Unlock()
+		return errors.New("请先扫描并选择手机")
+	}
+	var secret [16]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	r.state.Phase = "pairing"
+	r.state.Pairing = true
+	r.state.PairCode = pairingCode(secret)
+	r.setMessage("请在手机上核对 6 位数字后点「允许」。", false)
+	r.mu.Unlock()
+
+	var result byte
+	// Whatever the radio does, the UI must not stay in "pairing" forever.
+	finished := make(chan struct{})
+	go func() {
+		select {
+		case <-finished:
+		case <-time.After(90 * time.Second):
+			r.mu.Lock()
+			if r.state.Pairing {
+				r.state.Pairing, r.state.Phase, r.state.PairCode = false, "", ""
+				r.setMessage("配对超时。请在手机上核对数字后重试。", true)
+			}
+			r.mu.Unlock()
+		}
+	}()
+	pairErr := r.ble.run(func() error {
+		var err error
+		result, err = pairPhone(target, secret)
+		return err
+	})
+	close(finished)
+
+	r.mu.Lock()
+	r.state.Phase = ""
+	r.state.Pairing = false
+	r.state.PairCode = ""
+	switch {
+	case errors.Is(pairErr, errNoPairing):
+		r.setMessage("这台手机的接收端版本较旧。请升级手机端，或直接输入 32 位连接码。", true)
+	case pairErr != nil:
+		r.setMessage("配对失败："+pairErr.Error()+"。请重新扫描手机。", true)
+	case result == pairDenied:
+		r.setMessage("手机拒绝了配对。可以重试，或直接输入连接码。", true)
+	case result == pairTimeout:
+		r.setMessage("配对超时。请在手机上点「允许」后重试。", true)
+	case result == pairAllowed:
+		r.rememberSecretLocked(secret)
+		r.setMessage("已与手机配对，正在连接…", false)
+	default:
+		r.setMessage("配对没有得到结果，请重试。", true)
+	}
+	clear(secret[:])
+	paired := result == pairAllowed && pairErr == nil
+	r.mu.Unlock()
+	if !paired {
+		return nil
+	}
+	return r.Connect(id, "")
+}
+
+// pairingCode is the six digits both screens show. PairRequest.code on the phone
+// computes the same value; the Go test pins it against a known key.
+func pairingCode(secret [16]byte) string {
+	mac := hmac.New(sha256.New, secret[:])
+	_, _ = mac.Write([]byte("ppr-pair-code"))
+	tag := mac.Sum(nil)
+	value := uint32(tag[0])<<24 | uint32(tag[1])<<16 | uint32(tag[2])<<8 | uint32(tag[3])
+	return fmt.Sprintf("%06d", value%1_000_000)
+}
+
+// secretFor resolves the key to use: the typed one, or the remembered one when
+// the field was left empty.
+func (r *Remote) secretFor(code string) ([16]byte, bool, error) {
+	trimmed := strings.TrimSpace(code)
+	if trimmed == "" {
+		// Read the stored key lazily: encode() would need locking, and this path
+		// matters more than the allocation.
+		if stored, ok := r.storedSecret(); ok {
+			return stored, true, nil
+		}
+		return [16]byte{}, false, errors.New("请输入手机上显示的 32 位十六进制连接码")
+	}
+	decoded, err := hex.DecodeString(trimmed)
+	if err != nil || len(decoded) != 16 {
+		return [16]byte{}, false, errors.New("请输入手机上显示的 32 位十六进制连接码")
+	}
+	var secret [16]byte
+	copy(secret[:], decoded)
+	clear(decoded)
+	return secret, false, nil
+}
+
+func (r *Remote) storedSecret() ([16]byte, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.hasKey {
+		return [16]byte{}, false
+	}
+	return r.secret, true
+}
+
+func (r *Remote) ForgetSecret() error {
+	r.keysMu.Lock()
+	defer r.keysMu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.hasKey {
+		return nil
+	}
+	r.forgetSecretLocked()
+	r.setMessage("已忘记这台手机的密钥。下次连接需要重新输入。", false)
+	return r.savePreferences()
+}
+
+// rememberSecretLocked stores the key that just authenticated, so the next
+// connection only needs a click.
+func (r *Remote) rememberSecretLocked(secret [16]byte) {
+	r.secret, r.hasKey = secret, true
+	r.state.Remembered = true
+	if err := r.savePreferences(); err != nil {
+		r.setMessage("设置保存失败，下次连接可能需要重新输入密钥。", true)
+	}
+}
+
+func (r *Remote) forgetSecretLocked() {
+	var zero [16]byte
+	r.secret, r.hasKey = zero, false
+	r.state.Remembered = false
 }
 
 func (r *Remote) Disconnect() error {
@@ -299,8 +490,18 @@ func (r *Remote) setMessage(message string, problem bool) {
 	r.state.Message, r.state.Problem = message, problem
 }
 
-func (r *Remote) save(settings preferences) error {
-	data, err := json.MarshalIndent(settings, "", "  ")
+// writeFile persists preferences plus the remembered pairing key. It takes no
+// locks: callers either hold r.mu or pass a snapshot of it.
+func (r *Remote) writeFile(prefs preferences, secret [16]byte, hasKey bool) error {
+	next := settings{preferences: prefs}
+	if hasKey {
+		sealed, err := protectSecret(secret[:])
+		if err != nil {
+			return fmt.Errorf("保存设置失败：%w", err)
+		}
+		next.Code = sealed
+	}
+	data, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -320,10 +521,26 @@ func (r *Remote) save(settings preferences) error {
 	if err := os.Rename(f.Name(), r.file); err != nil {
 		return fmt.Errorf("保存设置失败：%w", err)
 	}
+	return nil
+}
+
+// save writes new preferences and keeps the remembered key as it is.
+func (r *Remote) save(next preferences) error {
 	r.mu.Lock()
-	r.state.Settings = settings
+	secret, hasKey := r.secret, r.hasKey
+	r.mu.Unlock()
+	if err := r.writeFile(next, secret, hasKey); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.state.Settings = next
 	r.mu.Unlock()
 	return nil
+}
+
+// savePreferences rewrites the file from current state; the caller holds r.mu.
+func (r *Remote) savePreferences() error {
+	return r.writeFile(r.state.Settings, r.secret, r.hasKey)
 }
 
 var shortcutPattern = regexp.MustCompile(`^(Ctrl\+)?(Alt\+)?(Shift\+)?(Super\+)?(F([1-9]|1[0-9]|2[0-4])|Up|Down|Left|Right|PageUp|PageDown|Home|End|[A-Z0-9]|Space|Enter|Tab|Backspace|Delete|Insert|Escape)$`)
