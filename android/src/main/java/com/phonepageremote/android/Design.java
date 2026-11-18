@@ -27,6 +27,8 @@ final class Design {
     private static final int WHITE = Color.WHITE;
 
     private final Activity activity;
+    private LinearLayout card;
+    private LinearLayout cardParent;
 
     Design(Activity activity) {
         this.activity = activity;
@@ -101,8 +103,30 @@ final class Design {
     }
 
     /** Hairline + heading: the page's rule/h2 pair. */
+    /** Opens a card: a rounded surface with a state dot and a title, and routes the
+     *  rows that follow into it, so no call site had to learn a new shape. */
     void section(LinearLayout parent, int title) {
-        parent.addView(rule(R.dimen.section_gap));
+        LinearLayout surface = stack();
+        int pad = dp(R.dimen.gap_l);
+        surface.setPadding(pad, dp(R.dimen.gap_m), pad, dp(R.dimen.gap_m));
+        GradientDrawable shell = shape(color(R.color.card), color(R.color.line));
+        shell.setCornerRadius(dp(R.dimen.r_card_lg));
+        surface.setBackground(shell);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = dp(R.dimen.gap_m);
+        parent.addView(surface, params);
+
+        LinearLayout head = row();
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        View dot = new View(activity);
+        GradientDrawable dotShape = new GradientDrawable();
+        dotShape.setShape(GradientDrawable.OVAL);
+        dotShape.setColor(color(R.color.line));
+        dot.setBackground(dotShape);
+        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(R.dimen.dot), dp(R.dimen.dot));
+        dotParams.rightMargin = dp(R.dimen.gap_s);
+        head.addView(dot, dotParams);
         TextView heading = new TextView(activity);
         heading.setText(title);
         heading.setTextColor(color(R.color.ink));
@@ -111,7 +135,29 @@ final class Design {
         if (Build.VERSION.SDK_INT >= 28) {
             heading.setAccessibilityHeading(true);
         }
-        add(parent, heading, R.dimen.title_gap);
+        head.addView(heading, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        surface.addView(head, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        card = surface;
+        cardParent = parent;
+    }
+
+    /** The card the last section opened, so the screen can light its dot later. */
+    LinearLayout currentCard() {
+        return card;
+    }
+
+    /** Green dot once that part is actually live. */
+    void markCard(LinearLayout surface, boolean live) {
+        if (surface == null || surface.getChildCount() == 0) {
+            return;
+        }
+        View dot = ((LinearLayout) surface.getChildAt(0)).getChildAt(0);
+        GradientDrawable shape = new GradientDrawable();
+        shape.setShape(GradientDrawable.OVAL);
+        shape.setColor(color(live ? R.color.ok : R.color.line));
+        dot.setBackground(shape);
     }
 
     TextView bodyText(int text) {
@@ -229,12 +275,13 @@ final class Design {
     }
 
     <T extends View> T add(LinearLayout parent, T view, int topDimen) {
+        LinearLayout target = (card != null && parent == cardParent) ? card : parent;
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         if (topDimen != 0) {
             params.topMargin = dp(topDimen);
         }
-        parent.addView(view, params);
+        target.addView(view, params);
         return view;
     }
 
@@ -245,4 +292,5 @@ final class Design {
         return drawable;
     }
 }
+
 

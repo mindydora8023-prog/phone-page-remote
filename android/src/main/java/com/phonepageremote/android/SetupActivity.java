@@ -50,6 +50,8 @@ public final class SetupActivity extends Activity {
     private Button receiverButton;
     private Button settingsButton;
     private Button copyButton;
+    private LinearLayout receiverCard;
+    private LinearLayout gestureCard;
     private LinearLayout pairBlock;
     private TextView pairText;
     private String secret;
@@ -117,6 +119,7 @@ public final class SetupActivity extends Activity {
         ui.add(body, ui.caption(R.string.intro), R.dimen.gap_s);
 
         ui.section(body, R.string.receiver_title);
+        receiverCard = ui.currentCard();
         receiverMessage = ui.add(body, ui.bodyText(R.string.stopped), 0);
         receiverButton = ui.add(body, ui.primary(R.string.start_receiver, v -> receiverAction()),
                 R.dimen.gap_m);
@@ -139,6 +142,7 @@ public final class SetupActivity extends Activity {
         ui.add(body, pairBlock, R.dimen.gap_s);
 
         ui.section(body, R.string.accessibility_title);
+        gestureCard = ui.currentCard();
         gestureStatus = ui.add(body, ui.bodyText(R.string.accessibility_off), 0);
         LinearLayout gestureActions = ui.row();
         gestureActions.setGravity(Gravity.END);
@@ -238,6 +242,8 @@ public final class SetupActivity extends Activity {
             pairText.setText(getString(R.string.pair_pending_text, pending.code));
         }
 
+        ui.markCard(receiverCard, ReceiverService.active());
+        ui.markCard(gestureCard, PageGestureService.isConnected());
         setReceiverState(chip, next.emphasized, message);
         receiverButton.setText(label);
         receiverButton.setEnabled(next.buttonEnabled);
@@ -348,5 +354,6 @@ public final class SetupActivity extends Activity {
         }
     }
 }
+
 
 
