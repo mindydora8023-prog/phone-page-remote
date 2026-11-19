@@ -10,51 +10,64 @@
 <body>
   <main>
     <header class="masthead">
-      <div><h1>手机翻页器</h1><p>用电脑键盘翻小说、切短视频。</p></div>
+      <h1>手机翻页器</h1>
+      <p>用电脑键盘翻小说、切短视频。</p>
       <span id="connection" class="status">未连接</span>
     </header>
 
-    <section class="connection-section" aria-labelledby="phone-title">
-      <div class="section-head"><h2 id="phone-title">蓝牙连接</h2><button id="scan" class="primary" disabled>扫描手机</button></div>
-      <p id="initial">在安卓手机上打开「手机翻页遥控」并启动蓝牙接收。</p>
-      <form id="pair" hidden autocomplete="off">
-        <label>附近的接收端<select id="phones" required></select></label>
-        <label>手机连接码<input id="code" type="password" maxlength="32" placeholder="32 位连接码" spellcheck="false"></label>
-        <button id="connect" class="primary" type="submit">连接</button>
-      </form>
-      <div id="pair-extra" hidden>
-        <span id="remembered-hint">已记住此手机的密钥，连接时连接码可留空。</span>
-        <button id="pair-device" type="button">免密配对</button>
-        <button id="forget" type="button" hidden>忘记密钥</button>
+    <section class="band connection-section" aria-labelledby="phone-title">
+      <div class="band-label"><span class="folio" aria-hidden="true">01</span><h2 id="phone-title">蓝牙连接</h2></div>
+      <div class="band-body">
+        <p id="initial">在安卓手机上打开「手机翻页遥控」并启动蓝牙接收。</p>
+        <div id="connected" hidden>
+          <div><span class="caption">当前手机</span><strong id="device"></strong></div>
+          <button id="disconnect" type="button">断开</button>
+        </div>
+        <form id="pair" hidden autocomplete="off">
+          <label>附近的接收端<select id="phones" required></select></label>
+          <label>手机连接码<input id="code" type="password" maxlength="32" placeholder="32 位连接码" spellcheck="false"></label>
+          <button id="connect" class="primary" type="submit">连接</button>
+        </form>
+        <div id="pair-extra" hidden>
+          <button id="pair-device" type="button">免密配对</button>
+          <span id="remembered-hint">已记住此手机的密钥，连接时连接码可留空。</span>
+          <button id="forget" class="quiet" type="button" hidden>忘记密钥</button>
+        </div>
+        <p id="pairing" hidden>在手机上核对这 6 位数字并点「允许」<strong id="pair-code"></strong></p>
+        <p id="message" role="status" aria-live="polite" hidden></p>
+        <button id="scan" class="primary" disabled>扫描手机</button>
       </div>
-      <p id="pairing" hidden>在手机上核对这 6 位数字并点「允许」：<strong id="pair-code"></strong></p>
-      <div id="connected" hidden><strong id="device"></strong><button id="disconnect" type="button">断开</button></div>
-      <p id="message" role="status" aria-live="polite" hidden></p>
     </section>
 
-    <section class="gesture-section" aria-labelledby="gesture-title">
-      <div class="section-head"><h2 id="gesture-title">手机手势</h2><label class="mode-label"><span class="visually-hidden">手势模式</span><select id="mode" disabled>
-        <option value="reading">小说 · 横滑</option>
-        <option value="reading-rtl">小说 · 横滑反向</option>
-        <option value="video">短视频 · 竖滑</option>
-        <option value="video-reversed">短视频 · 竖滑反向</option>
-      </select></label></div>
-      <div class="action-grid">
-        <article class="action previous">
-          <button id="prev-send" type="button" class="key" aria-label="试发上一页" disabled><span class="direction" aria-hidden="true"></span><kbd id="prev-key">F9</kbd></button>
-          <div class="action-footer"><div><strong>上一页</strong><span id="prev-direction">手指右滑</span></div><button id="prev-edit" type="button" aria-label="修改上一页快捷键" disabled>改键</button></div>
-        </article>
-        <article class="action next">
-          <button id="next-send" type="button" class="key" aria-label="试发下一页" disabled><span class="direction" aria-hidden="true"></span><kbd id="next-key">F10</kbd></button>
-          <div class="action-footer"><div><strong>下一页</strong><span id="next-direction">手指左滑</span></div><button id="next-edit" type="button" aria-label="修改下一页快捷键" disabled>改键</button></div>
-        </article>
+    <section class="band gesture-section" aria-labelledby="gesture-title">
+      <div class="band-label"><span class="folio" aria-hidden="true">02</span><h2 id="gesture-title">手机手势</h2></div>
+      <div class="band-body">
+        <label class="mode-label">手势模式<select id="mode" disabled>
+          <option value="reading">小说 · 横滑</option>
+          <option value="reading-rtl">小说 · 横滑反向</option>
+          <option value="video">短视频 · 竖滑</option>
+          <option value="video-reversed">短视频 · 竖滑反向</option>
+        </select></label>
+        <div class="action-grid">
+          <article class="action previous">
+            <button id="prev-send" type="button" class="key" aria-label="试发上一页" disabled><span class="direction" aria-hidden="true"></span><kbd id="prev-key">F9</kbd></button>
+            <div class="action-footer"><div><strong>上一页</strong><span id="prev-direction">手指右滑</span></div><button id="prev-edit" class="quiet" type="button" aria-label="修改上一页快捷键" disabled>改键</button></div>
+          </article>
+          <article class="action next">
+            <button id="next-send" type="button" class="key" aria-label="试发下一页" disabled><span class="direction" aria-hidden="true"></span><kbd id="next-key">F10</kbd></button>
+            <div class="action-footer"><div><strong>下一页</strong><span id="next-direction">手指左滑</span></div><button id="next-edit" class="quiet" type="button" aria-label="修改下一页快捷键" disabled>改键</button></div>
+          </article>
+        </div>
+        <p id="capture" role="status" tabindex="-1" hidden></p>
       </div>
-      <p id="capture" role="status" tabindex="-1" hidden></p>
     </section>
 
-    <footer>
-      <div><h2>全局快捷键</h2><p>启用后，切到其他窗口也能翻页。</p></div>
-      <button id="global" type="button" aria-pressed="false" disabled>启用</button>
+    <footer class="band global-section" aria-labelledby="global-title">
+      <div class="band-label"><span class="folio" aria-hidden="true">03</span><h2 id="global-title">全局快捷键</h2></div>
+      <div class="band-body global-body">
+        <p>启用后，切到其他窗口也能翻页。</p>
+        <button id="global" type="button" aria-pressed="false" disabled>启用</button>
+      </div>
     </footer>
     <p id="alert" role="alert" hidden></p>
   </main>

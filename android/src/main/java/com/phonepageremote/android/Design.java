@@ -21,14 +21,19 @@ import android.widget.TextView;
  * Colours and distances come from res/values/{colors,dimens}.xml, which mirror
  * windows/ui/style.css; values-night/colors.xml carries the same palette in dark.
  * Nothing here hard-codes a colour, a size or a spacing.
+ *
+ * The page is a Swiss grid: a heavy rule under the masthead, numbered sections
+ * split by hairlines, square controls, and one blue primary per section.
  */
 final class Design {
     private static final String SANS = "sans-serif";
+    private static final String SANS_LIGHT = "sans-serif-light";
     private static final int WHITE = Color.WHITE;
 
     private final Activity activity;
     private LinearLayout card;
     private LinearLayout cardParent;
+    private boolean firstSection = true;
 
     Design(Activity activity) {
         this.activity = activity;
@@ -42,7 +47,7 @@ final class Design {
         return activity.getColor(id);
     }
 
-    /** Full-bleed rule that opens the screen, the Android counterpart of the masthead border. */
+    /** Full-bleed rule that opens the screen, the Android counterpart of the window's top border. */
     View brandRule() {
         View view = new View(activity);
         view.setBackgroundColor(color(R.color.brand_blue));
@@ -81,52 +86,112 @@ final class Design {
         view.setTextColor(color(R.color.ink));
         view.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
         view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_display));
-        view.setLetterSpacing(-0.03f);
-        view.setLineSpacing(0, 1.06f);
-        view.setAutoSizeTextTypeUniformWithConfiguration(20, 34, 2, TypedValue.COMPLEX_UNIT_SP);
+        view.setLetterSpacing(-0.035f);
+        view.setIncludeFontPadding(false);
+        view.setMaxLines(2);
+        view.setAutoSizeTextTypeUniformWithConfiguration(24, 40, 2, TypedValue.COMPLEX_UNIT_SP);
         if (Build.VERSION.SDK_INT >= 28) {
             view.setAccessibilityHeading(true);
         }
         return view;
     }
 
-    View rule(int topDimen) {
+    /** The heavy ink rule that closes the masthead and the page. */
+    void heavyRule(LinearLayout parent, int topDimen) {
         View view = new View(activity);
-        view.setBackgroundColor(color(R.color.line));
+        view.setBackgroundColor(color(R.color.rule));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(R.dimen.hairline));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(R.dimen.heavy_rule));
         if (topDimen != 0) {
             params.topMargin = dp(topDimen);
         }
-        view.setLayoutParams(params);
+        parent.addView(view, params);
+        card = null;
+        cardParent = null;
+    }
+
+    private View hairline() {
+        View view = new View(activity);
+        view.setBackgroundColor(color(R.color.line));
+        view.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(R.dimen.hairline)));
         return view;
     }
 
-    /** Hairline + heading: the page's rule/h2 pair. */
-    /** Opens a card: a rounded surface with a state dot and a title, and routes the
-     *  rows that follow into it, so no call site had to learn a new shape. */
-    void section(LinearLayout parent, int title) {
+    /**
+     * Opens a numbered section: hairline above (except the first), a light blue
+     * folio, the title and a live marker, then routes the rows that follow into it.
+     */
+    void section(LinearLayout parent, String folio, int title) {
+        if (!firstSection) {
+            parent.addView(hairline());
+        }
+        firstSection = false;
         LinearLayout surface = stack();
-        int pad = dp(R.dimen.gap_l);
-        surface.setPadding(pad, dp(R.dimen.gap_m), pad, dp(R.dimen.gap_m));
-        GradientDrawable shell = shape(color(R.color.card), color(R.color.line));
-        shell.setCornerRadius(dp(R.dimen.r_card_lg));
-        surface.setBackground(shell);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.bottomMargin = dp(R.dimen.gap_m);
-        parent.addView(surface, params);
+        surface.setPadding(0, dp(R.dimen.section_pad), 0, dp(R.dimen.section_pad));
+        parent.addView(surface, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout head = row();
-        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setGravity(Gravity.BOTTOM);
+        TextView number = new TextView(activity);
+        number.setText(folio);
+        number.setTextColor(color(R.color.brand_text));
+        number.setTypeface(Typeface.create(SANS_LIGHT, Typeface.NORMAL));
+        number.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_folio));
+        number.setLetterSpacing(-0.04f);
+        number.setIncludeFontPadding(false);
+        number.setFontFeatureSettings("tnum");
+        number.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams numberParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        numberParams.rightMargin = dp(R.dimen.gap_m);
+        head.addView(number, numberParams);
+
+        TextView heading = new TextView(activity);
+        heading.setText(title);
+        heading.setTextColor(color(R.color.ink));
+        heading.setTypeface(Typeface.create(SANS, Typeface.BOLD));
+        heading.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_section));
+        heading.setIncludeFontPadding(false);
+        if (Build.VERSION.SDK_INT >= 28) {
+            heading.setAccessibilityHeading(true);
+        }
+        head.addView(heading, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         View dot = new View(activity);
-        GradientDrawable dotShape = new GradientDrawable();
-        dotShape.setShape(GradientDrawable.OVAL);
-        dotShape.setColor(color(R.color.line));
-        dot.setBackground(dotShape);
+        dot.setBackgroundColor(color(R.color.ok));
+        dot.setVisibility(View.INVISIBLE);
         LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(R.dimen.dot), dp(R.dimen.dot));
-        dotParams.rightMargin = dp(R.dimen.gap_s);
+        dotParams.leftMargin = dp(R.dimen.gap_s);
+        dotParams.bottomMargin = dp(R.dimen.hairline) * 3;
         head.addView(dot, dotParams);
+        surface.setTag(dot);
+
+        LinearLayout.LayoutParams headParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        headParams.bottomMargin = dp(R.dimen.gap_m);
+        surface.addView(head, headParams);
+
+        card = surface;
+        cardParent = parent;
+    }
+
+    /** Unnumbered block that needs an answer now: brand bar on the left, shaded ground. */
+    void callout(LinearLayout parent, int title) {
+        LinearLayout frame = row();
+        frame.setBackgroundColor(color(R.color.shade));
+        View bar = new View(activity);
+        bar.setBackgroundColor(color(R.color.brand_blue));
+        frame.addView(bar, new LinearLayout.LayoutParams(dp(R.dimen.callout_bar), ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout surface = stack();
+        int pad = dp(R.dimen.gap_l);
+        surface.setPadding(pad, pad, pad, pad);
+        frame.addView(surface, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        parent.addView(frame, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         TextView heading = new TextView(activity);
         heading.setText(title);
         heading.setTextColor(color(R.color.ink));
@@ -135,38 +200,32 @@ final class Design {
         if (Build.VERSION.SDK_INT >= 28) {
             heading.setAccessibilityHeading(true);
         }
-        head.addView(heading, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        surface.addView(head, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        surface.addView(heading);
 
         card = surface;
         cardParent = parent;
     }
 
-    /** The card the last section opened, so the screen can light its dot later. */
+    /** The section the last call opened, so the screen can light its marker later. */
     LinearLayout currentCard() {
         return card;
     }
 
-    /** Green dot once that part is actually live. */
+    /** Green square after the title once that part is actually live. */
     void markCard(LinearLayout surface, boolean live) {
-        if (surface == null || surface.getChildCount() == 0) {
+        if (surface == null || !(surface.getTag() instanceof View)) {
             return;
         }
-        View dot = ((LinearLayout) surface.getChildAt(0)).getChildAt(0);
-        GradientDrawable shape = new GradientDrawable();
-        shape.setShape(GradientDrawable.OVAL);
-        shape.setColor(color(live ? R.color.ok : R.color.line));
-        dot.setBackground(shape);
+        ((View) surface.getTag()).setVisibility(live ? View.VISIBLE : View.INVISIBLE);
     }
 
     TextView bodyText(int text) {
         TextView view = new TextView(activity);
         view.setText(text);
-        view.setTextColor(color(R.color.muted));
+        view.setTextColor(color(R.color.ink));
         view.setTypeface(Typeface.create(SANS, Typeface.NORMAL));
         view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_body));
-        view.setLineSpacing(0, 1.35f);
+        view.setLineSpacing(0, 1.4f);
         return view;
     }
 
@@ -176,29 +235,42 @@ final class Design {
         view.setTextColor(color(R.color.muted));
         view.setTypeface(Typeface.create(SANS, Typeface.NORMAL));
         view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_caption));
-        view.setLineSpacing(0, 1.35f);
+        view.setLineSpacing(0, 1.4f);
         return view;
     }
 
-    /** State chip: idle is quiet, anything that needs attention turns brand and bold. */
+    /** Six-digit pairing code: light, wide, tabular, in brand blue. */
+    TextView pairCode() {
+        TextView view = new TextView(activity);
+        view.setTextColor(color(R.color.brand_text));
+        view.setTypeface(Typeface.create(SANS_LIGHT, Typeface.NORMAL));
+        view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_pair_code));
+        view.setLetterSpacing(0.08f);
+        view.setFontFeatureSettings("tnum");
+        view.setIncludeFontPadding(false);
+        return view;
+    }
+
+    /** State marker: a square plus a word. Hollow and muted when idle, filled and blue otherwise. */
     TextView statusChip() {
         TextView view = new TextView(activity);
         view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_chip));
-        view.setGravity(Gravity.CENTER);
+        view.setGravity(Gravity.CENTER_VERTICAL);
         view.setSingleLine(true);
-        int pad = dp(R.dimen.gap_s);
-        view.setPadding(pad, pad, pad, pad);
+        view.setCompoundDrawablePadding(dp(R.dimen.gap_s));
         markStatus(view, false);
         return view;
     }
 
     void markStatus(TextView chip, boolean emphasized) {
-        chip.setTextColor(color(emphasized ? R.color.brand_blue : R.color.muted));
-        chip.setTypeface(Typeface.create(SANS, emphasized ? Typeface.BOLD : Typeface.NORMAL));
-        GradientDrawable pill = shape(color(R.color.card),
-                color(emphasized ? R.color.brand_blue : R.color.line));
-        pill.setCornerRadius(dp(R.dimen.r_pill));
-        chip.setBackground(pill);
+        int tone = color(emphasized ? R.color.brand_text : R.color.muted);
+        chip.setTextColor(tone);
+        chip.setTypeface(Typeface.create(SANS, Typeface.BOLD));
+        GradientDrawable square = shape(emphasized ? tone : Color.TRANSPARENT, tone);
+        square.setStroke(dp(R.dimen.heavy_rule), tone);
+        int size = dp(R.dimen.marker);
+        square.setBounds(0, 0, size, size);
+        chip.setCompoundDrawablesRelative(square, null, null, null);
     }
 
     Button primary(int label, View.OnClickListener click) {
@@ -214,7 +286,6 @@ final class Design {
         view.setMinimumWidth(0);
         int horizontal = dp(R.dimen.gap_l);
         GradientDrawable fill = shape(color(R.color.brand_blue), color(R.color.brand_blue));
-        fill.setCornerRadius(dp(R.dimen.r_btn));
         view.setBackground(new RippleDrawable(ColorStateList.valueOf(color(R.color.ripple_primary)), fill, null));
         view.setOnClickListener(click);
         // minHeight, not a fixed height: at 200% font scale the label must grow the control.
@@ -226,21 +297,20 @@ final class Design {
         return view;
     }
 
-    /** Compact secondary action, aligned right the way the page puts its footer buttons. */
+    /** Secondary action: square, hairline border, ink label; rows of them read left to right. */
     Button addChip(LinearLayout parent, int label, View.OnClickListener click) {
         Button view = new Button(activity);
         view.setText(label);
         view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_caption));
-        view.setTextColor(color(R.color.brand_blue));
+        view.setTextColor(color(R.color.ink));
         view.setTypeface(Typeface.create(SANS, Typeface.BOLD));
         view.setAllCaps(false);
         view.setGravity(Gravity.CENTER);
         view.setStateListAnimator(null);
         view.setMinWidth(0);
         view.setMinimumWidth(0);
-        int horizontal = dp(R.dimen.gap_m);
-        GradientDrawable edge = shape(color(R.color.card), color(R.color.line));
-        edge.setCornerRadius(dp(R.dimen.r_pill));
+        int horizontal = dp(R.dimen.gap_l);
+        GradientDrawable edge = shape(color(R.color.page), color(R.color.line));
         view.setBackground(new RippleDrawable(ColorStateList.valueOf(color(R.color.ripple_secondary)), edge, null));
         view.setOnClickListener(click);
         view.setMinHeight(dp(R.dimen.chip_height));
@@ -256,10 +326,17 @@ final class Design {
         return view;
     }
 
-    /** The pairing key reads like the Windows keycap: monospaced, brand, boxed. */
+    /** Turns a secondary action into the block's one blue answer. */
+    void emphasize(Button view) {
+        view.setTextColor(WHITE);
+        GradientDrawable fill = shape(color(R.color.brand_blue), color(R.color.brand_blue));
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(color(R.color.ripple_primary)), fill, null));
+    }
+
+    /** The pairing key reads like the Windows keycap: monospaced, brand, on a shaded slab. */
     TextView keyCard() {
         TextView view = new TextView(activity);
-        view.setTextColor(color(R.color.brand_blue));
+        view.setTextColor(color(R.color.brand_text));
         view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(R.dimen.type_key));
         view.setLetterSpacing(0.04f);
@@ -268,9 +345,7 @@ final class Design {
         int horizontal = dp(R.dimen.gap_l);
         int vertical = dp(R.dimen.gap_m);
         view.setPadding(horizontal, vertical, horizontal, vertical);
-        GradientDrawable box = shape(color(R.color.shade), color(R.color.line));
-        box.setCornerRadius(dp(R.dimen.r_btn));
-        view.setBackground(box);
+        view.setBackground(shape(color(R.color.shade), color(R.color.line)));
         return view;
     }
 
@@ -292,5 +367,3 @@ final class Design {
         return drawable;
     }
 }
-
-

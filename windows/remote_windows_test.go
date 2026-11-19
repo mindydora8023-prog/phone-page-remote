@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -235,6 +236,27 @@ func TestCommandMatchesAndroidProtocol(t *testing.T) {
 	packet := signedCommand(key, challenge, 3)
 	if got := hex.EncodeToString(packet[:]); got != "03d2b5cca4bce827e635239a0e5b89a988" {
 		t.Fatalf("unexpected packet %s", got)
+	}
+}
+
+func TestPhoneAnswersAreNotTransportFailures(t *testing.T) {
+	// An ATT error response is the phone saying no over a working link.
+	if err := winrtFailure(0x8065000E); !errors.Is(err, errPhoneRejected) || errors.Is(err, errGestureOff) {
+		t.Errorf("ATT unlikely error classified as %v", err)
+	}
+	if err := winrtFailure(0x80650080); !errors.Is(err, errGestureOff) || !errors.Is(err, errPhoneRejected) {
+		t.Errorf("accessibility-off answer classified as %v", err)
+	}
+	if err := winrtFailure(0x80000013); errors.Is(err, errPhoneRejected) {
+		t.Errorf("a dropped link was treated as a phone answer: %v", err)
+	}
+	// Only failures before the write may be resent.
+	var notSent unsentError
+	if !errors.As(unsent(errors.New("timeout")), &notSent) {
+		t.Error("a transport failure before the write is not marked unsent")
+	}
+	if errors.As(unsent(errPhoneRejected), &notSent) {
+		t.Error("a phone answer was marked as safe to resend")
 	}
 }
 

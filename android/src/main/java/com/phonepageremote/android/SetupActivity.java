@@ -54,6 +54,7 @@ public final class SetupActivity extends Activity {
     private LinearLayout gestureCard;
     private LinearLayout pairBlock;
     private TextView pairText;
+    private TextView pairCode;
     private String secret;
 
     @Override
@@ -103,58 +104,64 @@ public final class SetupActivity extends Activity {
         LinearLayout body = ui.column(getResources().getDisplayMetrics().widthPixels);
         content.addView(body);
 
-        LinearLayout masthead = ui.row();
-        masthead.setGravity(Gravity.TOP);
-        masthead.addView(ui.display(R.string.app_name),
+        LinearLayout masthead = ui.stack();
+        masthead.addView(ui.display(R.string.app_name), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout subline = ui.row();
+        subline.setGravity(Gravity.BOTTOM);
+        subline.addView(ui.caption(R.string.intro),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         receiverStatus = ui.statusChip();
         receiverStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         statusParams.leftMargin = ui.dp(R.dimen.gap_m);
-        statusParams.topMargin = ui.dp(R.dimen.gap_s);
-        masthead.addView(receiverStatus, statusParams);
+        subline.addView(receiverStatus, statusParams);
+        LinearLayout.LayoutParams sublineParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sublineParams.topMargin = ui.dp(R.dimen.gap_s);
+        masthead.addView(subline, sublineParams);
         ui.add(body, masthead, 0);
+        ui.heavyRule(body, R.dimen.gap_l);
 
-        ui.add(body, ui.caption(R.string.intro), R.dimen.gap_s);
-
-        ui.section(body, R.string.receiver_title);
+        ui.section(body, "01", R.string.receiver_title);
         receiverCard = ui.currentCard();
         receiverMessage = ui.add(body, ui.bodyText(R.string.stopped), 0);
         receiverButton = ui.add(body, ui.primary(R.string.start_receiver, v -> receiverAction()),
-                R.dimen.gap_m);
+                R.dimen.gap_l);
         LinearLayout receiverActions = ui.row();
-        receiverActions.setGravity(Gravity.END);
         settingsButton = ui.addChip(receiverActions, R.string.open_app_settings, v -> openSettings());
         ui.add(body, receiverActions, 0);
 
         // Same allow/deny as the notification, but inside the app: notifications are
         // easy to fold away on ROMs that file unknown apps into a silent group.
         pairBlock = ui.stack();
-        ui.section(pairBlock, R.string.pair_pending_title);
-        pairText = ui.add(pairBlock, ui.bodyText(R.string.pair_pending_text), 0);
+        ui.callout(pairBlock, R.string.pair_pending_title);
+        pairText = ui.add(pairBlock, ui.caption(R.string.pair_pending_text), R.dimen.gap_s);
+        pairCode = ui.add(pairBlock, ui.pairCode(), R.dimen.gap_m);
         LinearLayout pairActions = ui.row();
-        pairActions.setGravity(Gravity.END);
-        ui.addChip(pairActions, R.string.pair_allow, v -> approvePair(true));
+        Button allow = ui.addChip(pairActions, R.string.pair_allow, v -> approvePair(true));
         ui.addChip(pairActions, R.string.pair_deny, v -> approvePair(false));
+        ui.emphasize(allow);
         ui.add(pairBlock, pairActions, R.dimen.gap_s);
         pairBlock.setVisibility(View.GONE);
-        ui.add(body, pairBlock, R.dimen.gap_s);
+        LinearLayout.LayoutParams pairParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pairParams.bottomMargin = ui.dp(R.dimen.section_pad);
+        body.addView(pairBlock, pairParams);
 
-        ui.section(body, R.string.accessibility_title);
+        ui.section(body, "02", R.string.accessibility_title);
         gestureCard = ui.currentCard();
         gestureStatus = ui.add(body, ui.bodyText(R.string.accessibility_off), 0);
         LinearLayout gestureActions = ui.row();
-        gestureActions.setGravity(Gravity.END);
         ui.addChip(gestureActions, R.string.accessibility_settings,
                 v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         ui.add(body, gestureActions, R.dimen.gap_s);
 
-        ui.section(body, R.string.secret_title);
+        ui.section(body, "03", R.string.secret_title);
         ui.add(body, ui.caption(R.string.secret_help), 0);
         keyView = ui.add(body, ui.keyCard(), R.dimen.gap_m);
         LinearLayout keyActions = ui.row();
-        keyActions.setGravity(Gravity.END);
         copyButton = ui.addChip(keyActions, R.string.copy_secret, v -> copySecret());
         ui.addChip(keyActions, R.string.rotate_secret, v -> new AlertDialog.Builder(this)
                 .setTitle(R.string.rotate_secret)
@@ -162,7 +169,8 @@ public final class SetupActivity extends Activity {
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.rotate_secret, (dialog, which) -> rotateSecret())
                 .show());
-        ui.add(body, keyActions, R.dimen.gap_m);
+        ui.add(body, keyActions, R.dimen.gap_s);
+        ui.heavyRule(body, 0);
     }
 
     private BluetoothAdapter adapter() {
@@ -239,7 +247,8 @@ public final class SetupActivity extends Activity {
         ReceiverService.PairInfo pending = ReceiverService.pendingPair();
         pairBlock.setVisibility(pending == null ? View.GONE : View.VISIBLE);
         if (pending != null) {
-            pairText.setText(getString(R.string.pair_pending_text, pending.code));
+            pairText.setText(R.string.pair_pending_text);
+            pairCode.setText(pending.code);
         }
 
         ui.markCard(receiverCard, ReceiverService.active());

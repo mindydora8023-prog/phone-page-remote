@@ -373,9 +373,34 @@ func (r *Remote) Send(action string) error {
 	r.state.Phase = "sending"
 	r.mu.Unlock()
 	err := r.ble.run(func() error {
-		err := r.ble.link.send(byte(command))
+		link := r.ble.link
+		err := link.send(byte(command))
+		if err == nil || errors.Is(err, errPhoneRejected) {
+			return err
+		}
+		// The link is gone. Reconnect with the same key before giving up, so a
+		// radio hiccup does not cost the whole session.
+		target, secret := link.target, link.secret
+		link.close()
+		r.ble.link = nil
+		r.mu.Lock()
+		r.setMessage("蓝牙连接中断，正在自动重连…", false)
+		r.mu.Unlock()
+		fresh, openErr := r.reconnect(target, secret)
+		clear(secret[:])
+		if openErr != nil {
+			return err
+		}
+		r.ble.link = fresh
+		var notSent unsentError
+		if !errors.As(err, &notSent) {
+			// The command may have reached the phone; sending it again could
+			// turn two pages.
+			return errResultUnknown
+		}
+		err = fresh.send(byte(command))
 		if err != nil && !errors.Is(err, errPhoneRejected) {
-			r.ble.link.close()
+			fresh.close()
 			r.ble.link = nil
 		}
 		return err
@@ -386,18 +411,49 @@ func (r *Remote) Send(action string) error {
 		r.state.Last = action
 		r.state.Sent++
 		r.setMessage("手机已接收翻页指令。", false)
+	} else if errors.Is(err, errResultUnknown) {
+		r.setMessage("连接曾中断，已自动重连。刚才那一下可能没有送达，请看手机确认。", true)
+	} else if errors.Is(err, errGestureOff) {
+		r.setMessage("连接正常，但手机的无障碍服务未开启。请在手机「手机翻页遥控」里打开无障碍设置并启用。", true)
 	} else if errors.Is(err, errPhoneRejected) {
 		r.setMessage("手机未接受手势。请确认屏幕已解锁、无障碍服务已开启，或稍后再按。", true)
 	} else {
 		r.state.Device = ""
 		r.setMessage("蓝牙连接已断开，手势结果未知。请重新扫描连接。", true)
 	}
-	lost := err != nil && !errors.Is(err, errPhoneRejected)
+	lost := err != nil && !errors.Is(err, errPhoneRejected) && !errors.Is(err, errResultUnknown)
 	r.mu.Unlock()
 	if lost {
 		_ = r.SetGlobal(false)
 	}
 	return nil
+}
+
+// errResultUnknown: the link dropped after the command was written, and the
+// reconnect worked. The page may or may not have turned.
+var errResultUnknown = errors.New("翻页结果未知")
+
+// reconnect runs on the BLE worker. It tries the address the phone was found
+// at, then, because Android rotates its advertising address, a short scan for
+// the receiver service. A wrong phone found by the scan simply fails to
+// authenticate.
+func (r *Remote) reconnect(target phone, secret [16]byte) (*bleLink, error) {
+	link, err := openBLE(target, secret)
+	if err == nil {
+		return link, nil
+	}
+	phones, scanErr := scanPhones(3 * time.Second)
+	if scanErr != nil || len(phones) != 1 || phones[0].ID == target.ID {
+		return nil, err
+	}
+	link, err = openBLE(phones[0], secret)
+	if err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	r.state.Phones = phones
+	r.mu.Unlock()
+	return link, nil
 }
 
 func (r *Remote) SetMode(mode string) error {

@@ -46,6 +46,8 @@ public final class ReceiverService extends Service {
     private static final int PAIR_NOTIFICATION_ID = 27;
     private static final long PAIR_TIMEOUT_MS = 60_000L;
     private static final int ATT_UNLIKELY_ERROR = 0x0e;
+    /** Application error: authenticated, but the accessibility service is off. */
+    private static final int ATT_GESTURE_OFF = 0x80;
     private static final long START_TIMEOUT_MS = 8_000L;
     private static int status = R.string.stopped;
     private static int statusCode;
@@ -461,8 +463,16 @@ public final class ReceiverService extends Service {
                 result = BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED;
             } else {
                 int command = protocol.consume(address, value);
-                boolean accepted = command == 0 || (command > 0 && PageGestureService.trySwipe(command));
-                result = accepted ? BluetoothGatt.GATT_SUCCESS : ATT_UNLIKELY_ERROR;
+                if (command == 0) {
+                    result = BluetoothGatt.GATT_SUCCESS;
+                } else if (command < 0) {
+                    result = ATT_UNLIKELY_ERROR;
+                } else if (!PageGestureService.isConnected()) {
+                    result = ATT_GESTURE_OFF;
+                } else {
+                    result = PageGestureService.trySwipe(command)
+                            ? BluetoothGatt.GATT_SUCCESS : ATT_UNLIKELY_ERROR;
+                }
             }
             if (responseNeeded) {
                 respond(device, requestId, result, null);

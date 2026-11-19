@@ -26,18 +26,21 @@ let pulseTimer;
 // largest that still fits the longer of the two labels.
 const keyCanvas = document.createElement("canvas");
 const keyContext = keyCanvas.getContext("2d");
-const keySizes = [48, 45, 42, 39, 36, 33, 30, 27, 24, 21, 18, 15];
-const keyFont = (size) => `800 ${size}px "Helvetica Neue",Arial,"Microsoft YaHei UI",sans-serif`;
+const keySizes = [64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16];
+const keyFont = (size) => `800 ${size}px "Helvetica Neue",Helvetica,Arial,"Microsoft YaHei UI",sans-serif`;
 
-// Horizontal room a label has inside one card, in CSS pixels.
+// Horizontal room a label has inside one key, in CSS pixels. The arrow sits
+// above the label, so only a row layout has to give up width for it.
 function keyRoom(card) {
   if (!card || !card.clientWidth) return 0;
   const style = getComputedStyle(card);
   const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
-  const gap = parseFloat(style.columnGap) || 0;
-  const arrow = card.querySelector(".direction");
-  const arrowWidth = arrow ? arrow.getBoundingClientRect().width : 0;
-  return Math.max(24, card.clientWidth - padding - gap - arrowWidth - 4);
+  let beside = 0;
+  if (!style.flexDirection.startsWith("column")) {
+    const arrow = card.querySelector(".direction");
+    beside = (parseFloat(style.columnGap) || 0) + (arrow ? arrow.getBoundingClientRect().width : 0);
+  }
+  return Math.max(24, card.clientWidth - padding - beside - 4);
 }
 
 // Largest size from the scale whose rendered width fits `room`.

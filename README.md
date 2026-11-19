@@ -29,7 +29,7 @@
 
 ## 界面
 
-两端共用一套视觉语言：6px/dp 品牌蓝顶条、display 级标题配实时状态标签、1px 发丝线分节、每节一个蓝色主操作加右对齐的次级小块。颜色、字号与间距在两端各有唯一的定义处——Windows 是 `windows/ui/style.css` 顶部的 `:root` 令牌，安卓是 `res/values/colors.xml` 与 `dimens.xml`（夜间为 `values-night/colors.xml`）。改视觉请改令牌，不要在别处写死数值。
+两端共用一套瑞士网格视觉：6px/dp 克莱因蓝（`#002FA7`）顶条，大号标题下压一道 2px 墨色粗线，右侧用方块加文字表示实时状态；各节用浅蓝细体编号 01、02、03 分隔，节与节之间是 1px 发丝线；控件一律直角，每节只有一个蓝色主操作，次级操作用发丝线边框或下划线文字。Windows 端的上一页/下一页做成两块并排的大按键，下一页整块填满品牌蓝。颜色、字号与间距在两端各有唯一的定义处——Windows 是 `windows/ui/style.css` 顶部的 `:root` 令牌，安卓是 `res/values/colors.xml` 与 `dimens.xml`（夜间为 `values-night/colors.xml`）。改视觉请改令牌，不要在别处写死数值。
 
 两端都跟随系统主题：Windows 走 `prefers-color-scheme`，安卓走 `values-night` 并同步系统栏图标与底色。字号使用相对单位（Windows 的 `clamp()`、安卓的 `sp` 加标题 autosize），系统字体放大到 200% 时标题、按钮与小块会一起变高，不会裁字。Windows 窗口在 510、720、1200 三档宽度下均无横向溢出；安卓在竖屏、横屏（居中的 648dp 阅读宽度）与 200% 字号下均验证通过。`prefers-reduced-motion` 下关闭所有过渡。
 

@@ -26,6 +26,12 @@ const pairID = "{0054E118-E465-4B7F-85E7-1B0963092304}"
 
 var errPhoneRejected = errors.New("手机拒绝了此操作")
 
+// attGestureOff is the application ATT error ReceiverService answers with when
+// its accessibility service is not running, mirroring ATT_GESTURE_OFF there.
+const attGestureOff = 0x80
+
+var errGestureOff = fmt.Errorf("%w：无障碍服务未开启", errPhoneRejected)
+
 type phone struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
@@ -35,12 +41,21 @@ type phone struct {
 
 type bleLink struct {
 	device    *bluetooth.BluetoothLEDevice
+	session   *gatt.GattSession
 	service   *gatt.GattDeviceService
 	challenge *gatt.GattCharacteristic
 	command   *gatt.GattCharacteristic
 	pair      *gatt.GattCharacteristic
+	target    phone
 	secret    [16]byte
 }
+
+// unsentError marks a failure that happened before the signed command left
+// this computer, so resending it cannot swipe the phone twice.
+type unsentError struct{ err error }
+
+func (e unsentError) Error() string { return e.err.Error() }
+func (e unsentError) Unwrap() error { return e.err }
 
 type bleWorker struct {
 	jobs chan func(error)
@@ -205,13 +220,14 @@ func openBLE(target phone, secret [16]byte) (*bleLink, error) {
 	if err != nil {
 		return nil, err
 	}
-	link := &bleLink{device: device, secret: secret}
+	link := &bleLink{device: device, target: target, secret: secret}
 	ready := false
 	defer func() {
 		if !ready {
 			link.close()
 		}
 	}()
+	link.keepAlive()
 	if err := link.discover(); err != nil {
 		return nil, err
 	}
@@ -431,6 +447,29 @@ func (l *bleLink) discoverCharacteristics() error {
 	return nil
 }
 
+// keepAlive asks Windows to hold the LE link open while this app uses it.
+// Without a GattSession that maintains the connection, Windows drops an idle
+// link after a few seconds and the next key press has to wait for, or fails
+// on, a fresh connection. Failure here is not fatal: the link still works on
+// demand, just less reliably.
+func (l *bleLink) keepAlive() {
+	id, err := l.device.GetBluetoothDeviceId()
+	if err != nil || id == nil {
+		return
+	}
+	defer id.Release()
+	session, err := asyncResult[gatt.GattSession](8 * time.Second)(gatt.GattSessionFromDeviceIdAsync(id))
+	if err != nil {
+		return
+	}
+	if err := session.SetMaintainConnection(true); err != nil {
+		_ = session.Close()
+		session.Release()
+		return
+	}
+	l.session = session
+}
+
 func (l *bleLink) close() {
 	if l.pair != nil {
 		l.pair.Release()
@@ -446,6 +485,11 @@ func (l *bleLink) close() {
 		_ = l.service.Close()
 		l.service.Release()
 	}
+	if l.session != nil {
+		_ = l.session.SetMaintainConnection(false)
+		_ = l.session.Close()
+		l.session.Release()
+	}
 	_ = l.device.Close()
 	l.device.Release()
 	clear(l.secret[:])
@@ -454,15 +498,15 @@ func (l *bleLink) close() {
 func (l *bleLink) send(command byte) error {
 	result, err := asyncResult[gatt.GattReadResult](5 * time.Second)(l.challenge.ReadValueWithCacheModeAsync(bluetooth.BluetoothCacheModeUncached))
 	if err != nil {
-		return err
+		return unsent(notReady(err))
 	}
 	defer result.Release()
 	if status, err := result.GetStatus(); err != nil || status != gatt.GattCommunicationStatusSuccess {
-		return gattStatus(status, err)
+		return unsent(notReady(gattStatus(status, err)))
 	}
 	buffer, err := result.GetValue()
 	if err != nil || buffer == nil {
-		return errors.New("手机未返回验证数据")
+		return unsent(errors.New("手机未返回验证数据"))
 	}
 	defer buffer.Release()
 	if size, err := buffer.GetLength(); err != nil || size != 16 {
@@ -493,7 +537,7 @@ func (l *bleLink) send(command byte) error {
 	defer value.Release()
 	op, err := l.command.WriteValueWithOptionAsync(value, gatt.GattWriteOptionWriteWithResponse)
 	if err != nil {
-		return err
+		return unsent(err)
 	}
 	defer op.Release()
 	if err := awaitWinRT(op, 5*time.Second); err != nil {
@@ -502,6 +546,39 @@ func (l *bleLink) send(command byte) error {
 	// The WinRT enum is written inline to the result slot, not dereferenced.
 	status, err := op.GetResults()
 	return gattStatus(gatt.GattCommunicationStatus(uintptr(status)), err)
+}
+
+// unsent wraps transport failures only: a phone that answered and said no has
+// still been reached, and that answer must not be retried.
+func unsent(err error) error {
+	if err == nil || errors.Is(err, errPhoneRejected) {
+		return err
+	}
+	return unsentError{err}
+}
+
+// notReady: a refused challenge read means the receiver is stopping or has
+// not registered this computer yet. It says nothing about the key, so it must
+// not be reported, or acted on, as a rejection.
+func notReady(err error) error {
+	if errors.Is(err, errPhoneRejected) {
+		return errors.New("手机接收端尚未就绪")
+	}
+	return err
+}
+
+// winrtFailure turns a failed WinRT operation into an error. The legacy GATT
+// calls report an ATT error response from the phone as an HRESULT in the
+// E_BLUETOOTH_ATT_* range (0x8065xxxx), not as a ProtocolError status: the link
+// is fine, the phone just said no.
+func winrtFailure(hresult uint32) error {
+	if hresult == 0x80650000|attGestureOff {
+		return errGestureOff
+	}
+	if hresult&0xFFFF0000 == 0x80650000 {
+		return errPhoneRejected
+	}
+	return fmt.Errorf("Windows 蓝牙操作已结束（0x%08X）", hresult)
 }
 
 func gattStatus(status gatt.GattCommunicationStatus, err error) error {
@@ -558,7 +635,7 @@ func awaitWinRT(op *foundation.IAsyncOperation, timeout time.Duration) error {
 			if err != nil {
 				return err
 			}
-			return fmt.Errorf("Windows 蓝牙操作已结束（0x%08X）", uint32(hresult.Value))
+			return winrtFailure(uint32(hresult.Value))
 		}
 		time.Sleep(12 * time.Millisecond)
 	}
